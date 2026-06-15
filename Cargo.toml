@@ -1,0 +1,36 @@
+[package]
+name = "cdd-control-plane"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4"
+diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "uuid", "serde_json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+derive_more = { version = "1.0", features = ["full"] }
+dotenvy = "0.15"
+tokio = { version = "1", features = ["full"] }
+argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+log = "0.4"
+env_logger = "0.11"
+diesel_migrations = { version = "2.3.2", features = ["postgres"] }
+utoipa = { version = "5.5", features = ["actix_extras", "chrono", "macros", "uuid"] }
+async-trait = "0.1.89"
+config = "0.15"
+actix-web-httpauth = "0.8.2"
+futures-util = "0.3.32"
+crypto_box = { version = "0.9.1", features = ["seal"] }
+base64 = "0.22.1"
+crypto_secretbox = "0.1.1"
+fred = "10.1.0"
+
+[dev-dependencies]
+mockall = "0.14.0"
+tokio = { version = "1", features = ["test-util"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ["cfg(tarpaulin_include)"] }
