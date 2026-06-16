@@ -66,11 +66,28 @@ mod tests {
     }
 }
 
-    #[test]
-    fn test_error_response() {
-        assert_eq!(Error::InternalError.error_response().status(), actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(Error::Unauthorized.error_response().status(), actix_web::http::StatusCode::UNAUTHORIZED);
-        assert_eq!(Error::BadRequest("bad".into()).error_response().status(), actix_web::http::StatusCode::BAD_REQUEST);
-        assert_eq!(Error::NotFound("no".into()).error_response().status(), actix_web::http::StatusCode::NOT_FOUND);
-        assert_eq!(Error::Database(diesel::result::Error::NotFound).error_response().status(), actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
-    }
+#[test]
+fn test_error_response() {
+    assert_eq!(
+        Error::InternalError.error_response().status(),
+        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
+    assert_eq!(
+        Error::Unauthorized.error_response().status(),
+        actix_web::http::StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        Error::BadRequest("bad".into()).error_response().status(),
+        actix_web::http::StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        Error::NotFound("no".into()).error_response().status(),
+        actix_web::http::StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        Error::Database(diesel::result::Error::NotFound)
+            .error_response()
+            .status(),
+        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
+}

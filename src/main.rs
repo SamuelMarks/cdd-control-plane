@@ -1,7 +1,7 @@
 #![cfg(not(tarpaulin_include))]
 //! Main entry point for the cdd-control-plane web server.
 
-use actix_web::{App, HttpServer, middleware};
+use actix_web::{middleware, App, HttpServer};
 use cdd_control_plane::api;
 
 #[actix_web::main]

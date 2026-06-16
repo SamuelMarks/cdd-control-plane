@@ -111,7 +111,12 @@ pub trait CddRepository: Send + Sync {
     ) -> Result<Release, Error>;
 
     /// Upsert a user token
-    async fn upsert_user_token(&self, user_id: i32, provider: String, encrypted_token: String) -> Result<UserToken, Error>;
+    async fn upsert_user_token(
+        &self,
+        user_id: i32,
+        provider: String,
+        encrypted_token: String,
+    ) -> Result<UserToken, Error>;
 
     /// List a user's tokens
     async fn list_user_tokens(&self, user_id: i32) -> Result<Vec<UserToken>, Error>;
@@ -130,13 +135,21 @@ pub trait CddRepository: Send + Sync {
     ) -> Result<AuditLog, Error>;
 
     /// List audit logs for an organization
-    async fn list_audit_logs(&self, org_id: i32, limit: i64, offset: i64) -> Result<Vec<AuditLog>, Error>;
+    async fn list_audit_logs(
+        &self,
+        org_id: i32,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<AuditLog>, Error>;
 }
 
 impl PgRepository {
     /// Helper to get a database connection
-    pub fn get_conn(&self) -> r2d2::PooledConnection<ConnectionManager<PgConnection>> {
-        self.pool.get().expect("DB connection failed")
+    pub fn get_conn(
+        &self,
+    ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, diesel::result::Error>
+    {
+        self.pool.get().map_err(|_| diesel::result::Error::NotFound)
     }
 }
 
@@ -149,7 +162,7 @@ pub struct PgRepository {
 #[async_trait]
 impl CddRepository for PgRepository {
     async fn find_user_by_username(&self, username: String) -> Result<Option<User>, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             users::table
                 .filter(users::username.eq(username))
@@ -157,11 +170,11 @@ impl CddRepository for PgRepository {
                 .optional()
         })
         .await
-        .expect("Blocking error cannot happen")
+        .map_err(|_| diesel::result::Error::NotFound)?
     }
 
     async fn find_user_by_id(&self, id: i32) -> Result<Option<User>, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || users::table.find(id).first::<User>(&mut conn).optional())
             .await
             .map_err(|_| Error::NotFound)?
@@ -174,7 +187,7 @@ impl CddRepository for PgRepository {
         email: String,
         password_hash: Option<String>,
     ) -> Result<User, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_user = NewUser {
                 github_id,
@@ -196,7 +209,7 @@ impl CddRepository for PgRepository {
         username: String,
         email: String,
     ) -> Result<User, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_user = NewUser {
                 github_id: Some(github_id),
@@ -221,7 +234,7 @@ impl CddRepository for PgRepository {
         login: String,
         description: Option<String>,
     ) -> Result<Organization, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_org = NewOrganization {
                 github_id,
@@ -242,7 +255,7 @@ impl CddRepository for PgRepository {
         login: String,
         description: Option<String>,
     ) -> Result<Organization, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_org = NewOrganization {
                 github_id: Some(github_id),
@@ -264,7 +277,7 @@ impl CddRepository for PgRepository {
     }
 
     async fn get_organization(&self, org_id: i32) -> Result<Option<Organization>, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             organizations::table
                 .find(org_id)
@@ -281,7 +294,7 @@ impl CddRepository for PgRepository {
         user_id: i32,
         role: String,
     ) -> Result<OrganizationUser, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_link = NewOrganizationUser {
                 organization_id: org_id,
@@ -303,7 +316,7 @@ impl CddRepository for PgRepository {
     }
 
     async fn get_user_role(&self, org_id: i32, user_id: i32) -> Result<Option<String>, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             organization_users::table
                 .filter(organization_users::organization_id.eq(org_id))
@@ -323,7 +336,7 @@ impl CddRepository for PgRepository {
         name: String,
         description: Option<String>,
     ) -> Result<Repository, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_repo = NewRepository {
                 organization_id: org_id,
@@ -346,7 +359,7 @@ impl CddRepository for PgRepository {
         name: String,
         description: Option<String>,
     ) -> Result<Repository, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_repo = NewRepository {
                 organization_id: org_id,
@@ -370,7 +383,7 @@ impl CddRepository for PgRepository {
     }
 
     async fn get_repository(&self, repo_id: i32) -> Result<Option<Repository>, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             repositories::table
                 .find(repo_id)
@@ -389,7 +402,7 @@ impl CddRepository for PgRepository {
         name: Option<String>,
         body: Option<String>,
     ) -> Result<Release, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_release = NewRelease {
                 repository_id: repo_id,
@@ -414,7 +427,7 @@ impl CddRepository for PgRepository {
         name: Option<String>,
         body: Option<String>,
     ) -> Result<Release, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_release = NewRelease {
                 repository_id: repo_id,
@@ -439,8 +452,13 @@ impl CddRepository for PgRepository {
         .map_err(|_| Error::NotFound)?
     }
 
-    async fn upsert_user_token(&self, user_id: i32, provider: String, encrypted_token: String) -> Result<UserToken, Error> {
-        let mut conn = self.get_conn();
+    async fn upsert_user_token(
+        &self,
+        user_id: i32,
+        provider: String,
+        encrypted_token: String,
+    ) -> Result<UserToken, Error> {
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_token = NewUserToken {
                 user_id,
@@ -459,7 +477,7 @@ impl CddRepository for PgRepository {
     }
 
     async fn list_user_tokens(&self, user_id: i32) -> Result<Vec<UserToken>, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             user_tokens::table
                 .filter(user_tokens::user_id.eq(user_id))
@@ -470,10 +488,14 @@ impl CddRepository for PgRepository {
     }
 
     async fn delete_user_token(&self, user_id: i32, provider: String) -> Result<(), Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
-            diesel::delete(user_tokens::table.filter(user_tokens::user_id.eq(user_id)).filter(user_tokens::provider.eq(&provider)))
-                .execute(&mut conn)
+            diesel::delete(
+                user_tokens::table
+                    .filter(user_tokens::user_id.eq(user_id))
+                    .filter(user_tokens::provider.eq(&provider)),
+            )
+            .execute(&mut conn)
         })
         .await
         .map_err(|_| Error::NotFound)??;
@@ -488,7 +510,7 @@ impl CddRepository for PgRepository {
         action: String,
         metadata_json: Option<serde_json::Value>,
     ) -> Result<AuditLog, Error> {
-        let mut conn = self.get_conn();
+        let mut conn = self.get_conn()?;
         web::block(move || {
             let new_log = NewAuditLog {
                 org_id,
@@ -505,8 +527,13 @@ impl CddRepository for PgRepository {
         .map_err(|_| Error::NotFound)?
     }
 
-    async fn list_audit_logs(&self, org_id: i32, limit: i64, offset: i64) -> Result<Vec<AuditLog>, Error> {
-        let mut conn = self.get_conn();
+    async fn list_audit_logs(
+        &self,
+        org_id: i32,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<AuditLog>, Error> {
+        let mut conn = self.get_conn()?;
         web::block(move || {
             audit_logs::table
                 .filter(audit_logs::org_id.eq(org_id))

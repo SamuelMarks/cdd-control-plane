@@ -24,33 +24,30 @@ pub async fn list_audit_logs(
 ) -> Result<HttpResponse, crate::error::Error> {
     let org_id = path.into_inner();
     let role = repo.get_user_role(org_id, user.user_id).await?;
-    
+
     // Only organization members can view audit logs
     if role.is_none() {
         return Err(crate::error::Error::Unauthorized);
     }
-    
+
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
-    
+
     let logs = repo.list_audit_logs(org_id, limit, offset).await?;
     Ok(HttpResponse::Ok().json(logs))
 }
 
 /// Configure audit routes.
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/orgs/{org_id}/audit")
-            .route("", web::get().to(list_audit_logs))
-    );
+    cfg.service(web::scope("/orgs/{org_id}/audit").route("", web::get().to(list_audit_logs)));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, App};
-    use crate::db::repository::MockCddRepository;
     use crate::api::auth_middleware::generate_test_token;
+    use crate::db::repository::MockCddRepository;
+    use actix_web::{test, App};
 
     #[actix_web::test]
     async fn test_list_audit_logs_unauthorized() {
@@ -61,7 +58,8 @@ mod tests {
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
                 .configure(configure),
-        ).await;
+        )
+        .await;
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit")
@@ -74,14 +72,19 @@ mod tests {
     #[actix_web::test]
     async fn test_list_audit_logs_authorized() {
         let mut mock_repo = MockCddRepository::new();
-        mock_repo.expect_get_user_role().returning(|_, _| Ok(Some("member".to_string())));
-        mock_repo.expect_list_audit_logs().returning(|_, _, _| Ok(vec![]));
+        mock_repo
+            .expect_get_user_role()
+            .returning(|_, _| Ok(Some("member".to_string())));
+        mock_repo
+            .expect_list_audit_logs()
+            .returning(|_, _, _| Ok(vec![]));
 
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
                 .configure(configure),
-        ).await;
+        )
+        .await;
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit?limit=10&offset=5")

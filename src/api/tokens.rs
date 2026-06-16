@@ -25,7 +25,8 @@ pub async fn store_token(
     cfg: web::Data<AppConfig>,
 ) -> Result<HttpResponse, crate::error::Error> {
     let encrypted = encrypt_local_secret(&cfg.webhook_secret, &payload.token)?;
-    repo.upsert_user_token(user.user_id, payload.provider.clone(), encrypted).await?;
+    repo.upsert_user_token(user.user_id, payload.provider.clone(), encrypted)
+        .await?;
     Ok(HttpResponse::Created().json(serde_json::json!({"status": "success"})))
 }
 
@@ -56,31 +57,39 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/tokens")
             .route("", web::post().to(store_token))
             .route("", web::get().to(list_tokens))
-            .route("/{provider}", web::delete().to(delete_token))
+            .route("/{provider}", web::delete().to(delete_token)),
     );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use actix_web::{test, App};
-    use crate::db::repository::MockCddRepository;
     use crate::api::auth_middleware::generate_test_token;
     use crate::db::models::UserToken;
+    use crate::db::repository::MockCddRepository;
+    use actix_web::{test, App};
 
     #[actix_web::test]
     async fn test_store_token() {
         let mut mock_repo = MockCddRepository::new();
-        mock_repo.expect_upsert_user_token().returning(|_, _, _| Ok(UserToken {
-            id: 1, user_id: 1, provider: "npm".into(), encrypted_token: "encrypted".into(), created_at: chrono::Utc::now().naive_utc(), updated_at: chrono::Utc::now().naive_utc()
-        }));
+        mock_repo.expect_upsert_user_token().returning(|_, _, _| {
+            Ok(UserToken {
+                id: 1,
+                user_id: 1,
+                provider: "npm".into(),
+                encrypted_token: "encrypted".into(),
+                created_at: chrono::Utc::now().naive_utc(),
+                updated_at: chrono::Utc::now().naive_utc(),
+            })
+        });
 
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
                 .app_data(web::Data::new(AppConfig::load(None).expect("config")))
                 .configure(configure),
-        ).await;
+        )
+        .await;
 
         let req = test::TestRequest::post()
             .uri("/tokens")
@@ -94,15 +103,23 @@ mod tests {
     #[actix_web::test]
     async fn test_list_tokens() {
         let mut mock_repo = MockCddRepository::new();
-        mock_repo.expect_list_user_tokens().returning(|_| Ok(vec![UserToken {
-            id: 1, user_id: 1, provider: "npm".into(), encrypted_token: "encrypted".into(), created_at: chrono::Utc::now().naive_utc(), updated_at: chrono::Utc::now().naive_utc()
-        }]));
+        mock_repo.expect_list_user_tokens().returning(|_| {
+            Ok(vec![UserToken {
+                id: 1,
+                user_id: 1,
+                provider: "npm".into(),
+                encrypted_token: "encrypted".into(),
+                created_at: chrono::Utc::now().naive_utc(),
+                updated_at: chrono::Utc::now().naive_utc(),
+            }])
+        });
 
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
                 .configure(configure),
-        ).await;
+        )
+        .await;
 
         let req = test::TestRequest::get()
             .uri("/tokens")
@@ -115,13 +132,16 @@ mod tests {
     #[actix_web::test]
     async fn test_delete_token() {
         let mut mock_repo = MockCddRepository::new();
-        mock_repo.expect_delete_user_token().returning(|_, _| Ok(()));
+        mock_repo
+            .expect_delete_user_token()
+            .returning(|_, _| Ok(()));
 
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
                 .configure(configure),
-        ).await;
+        )
+        .await;
 
         let req = test::TestRequest::delete()
             .uri("/tokens/npm")

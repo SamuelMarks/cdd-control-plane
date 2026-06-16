@@ -1,11 +1,11 @@
 //! API endpoints and router configuration.
 
+pub mod audit;
 pub mod auth;
 pub mod auth_middleware;
 pub mod orgs;
 pub mod repos;
 pub mod tokens;
-pub mod audit;
 
 use actix_web::web;
 
@@ -18,7 +18,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .configure(orgs::configure)
             .configure(repos::configure)
             .configure(tokens::configure)
-            .configure(audit::configure)
+            .configure(audit::configure),
     );
 }
 

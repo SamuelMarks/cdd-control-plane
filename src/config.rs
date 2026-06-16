@@ -71,8 +71,8 @@ mod tests {
     }
 }
 
-    #[test]
-    fn test_app_config_load_with_file() {
-        let config = AppConfig::load(Some("non_existent_file.toml")).expect("failed to load config");
-        assert_eq!(config.jwt_secret, "super-secret-key");
-    }
+#[test]
+fn test_app_config_load_with_file() {
+    let config = AppConfig::load(Some("non_existent_file.toml")).expect("failed to load config");
+    assert_eq!(config.jwt_secret, "super-secret-key");
+}
