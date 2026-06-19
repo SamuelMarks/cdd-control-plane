@@ -93,10 +93,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/tokens")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .set_json(serde_json::json!({ "provider": "npm", "token": "my_secret_token" }))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -127,10 +124,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/tokens")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
@@ -153,10 +147,7 @@ mod tests {
 
         let req = test::TestRequest::delete()
             .uri("/tokens/npm")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);

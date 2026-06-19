@@ -30,14 +30,8 @@ pub async fn list_audit_logs(
         return Err(crate::error::Error::Unauthorized);
     }
 
-    let limit = match query.limit {
-        Some(l) => l,
-        None => 50,
-    };
-    let offset = match query.offset {
-        Some(o) => o,
-        None => 0,
-    };
+    let limit = query.limit.unwrap_or(50);
+    let offset = query.offset.unwrap_or_default();
 
     let logs = repo.list_audit_logs(org_id, limit, offset).await?;
     Ok(HttpResponse::Ok().json(logs))
@@ -69,10 +63,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
@@ -98,10 +89,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit?limit=10&offset=5")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
@@ -127,10 +115,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);

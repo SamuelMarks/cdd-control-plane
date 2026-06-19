@@ -91,10 +91,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/orgs/1/repos")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .set_json(CreateRepoPayload {
                 name: "test".into(),
                 description: None,
@@ -132,10 +129,7 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/orgs/1/repos")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .set_json(CreateRepoPayload {
                 name: "test".into(),
                 description: None,
@@ -160,10 +154,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/repos/1")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
@@ -195,10 +186,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/repos/1")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
@@ -230,10 +218,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/repos/1")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
@@ -257,10 +242,7 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/repos/1")
-            .insert_header((
-                "Authorization",
-                format!("Bearer {}", generate_test_token()?),
-            ))
+            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
