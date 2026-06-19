@@ -559,7 +559,7 @@ mod tests {
         Pool::builder()
             .max_size(2)
             .build(manager)
-            .expect("Failed to create pool.")
+            .unwrap_or_else(|_| std::process::exit(1))
     }
 
     fn generate_unique_name(prefix: &str) -> String {
@@ -571,14 +571,14 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn test_all_repository_methods() {
+    async fn test_all_repository_methods() -> Result<(), Box<dyn std::error::Error>> {
         use std::sync::atomic::{AtomicI64, Ordering};
         use std::time::SystemTime;
         static COUNTER: AtomicI64 = AtomicI64::new(0);
 
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("Time went backwards")
+            .map_err(|e| e.to_string())?
             .as_nanos() as i64;
 
         let github_id_user: i64 = now
@@ -611,8 +611,7 @@ mod tests {
                 email.clone(),
                 Some("hash".into()),
             )
-            .await
-            .expect("create_user failed");
+            .await?;
 
         assert_eq!(user.username, username);
         assert_eq!(user.github_id, Some(github_id_user));
@@ -620,17 +619,15 @@ mod tests {
         // Test Find by Username
         let found_user = repo
             .find_user_by_username(username.clone())
-            .await
-            .expect("find_user_by_username failed")
-            .expect("user not found");
+            .await?
+            .ok_or("user not found")?;
         assert_eq!(found_user.id, user.id);
 
         // Test Find by ID
         let found_by_id = repo
             .find_user_by_id(user.id)
-            .await
-            .expect("find_user_by_id failed")
-            .expect("user not found by id");
+            .await?
+            .ok_or("user not found by id")?;
         assert_eq!(found_by_id.username, username);
 
         // Test Upsert User
@@ -640,42 +637,36 @@ mod tests {
                 username.clone(),
                 format!("new{}@example.com", username),
             )
-            .await
-            .expect("upsert_user failed");
+            .await?;
         assert_eq!(upserted_user.id, user.id); // Should update same user
 
         // Test Create Organization
         let org_login = generate_unique_name("org");
         let org = repo
             .create_organization(Some(github_id_org), org_login.clone(), Some("desc".into()))
-            .await
-            .expect("create_organization failed");
+            .await?;
         assert_eq!(org.login, org_login);
 
         // Test Get Organization
         let found_org = repo
             .get_organization(org.id)
-            .await
-            .expect("get_organization failed")
-            .expect("org not found");
+            .await?
+            .ok_or("org not found")?;
         assert_eq!(found_org.id, org.id);
 
         // Test Upsert Organization
         let upserted_org = repo
             .upsert_organization(github_id_org, org_login.clone(), Some("new_desc".into()))
-            .await
-            .expect("upsert_organization failed");
+            .await?;
         assert_eq!(upserted_org.id, org.id);
 
         // Test Add User to Organization & Role
         repo.add_user_to_organization(org.id, user.id, "admin".into())
-            .await
-            .expect("add_user_to_organization failed");
+            .await?;
         let role = repo
             .get_user_role(org.id, user.id)
-            .await
-            .expect("get_user_role failed")
-            .expect("role not found");
+            .await?
+            .ok_or("role not found")?;
         assert_eq!(role, "admin");
 
         // Test Create Repository
@@ -687,16 +678,14 @@ mod tests {
                 repo_name.clone(),
                 Some("repo desc".into()),
             )
-            .await
-            .expect("create_repository failed");
+            .await?;
         assert_eq!(repository.name, repo_name);
 
         // Test Get Repository
         let found_repo = repo
             .get_repository(repository.id)
-            .await
-            .expect("get_repository failed")
-            .expect("repository not found");
+            .await?
+            .ok_or("repository not found")?;
         assert_eq!(found_repo.id, repository.id);
 
         // Test Upsert Repository
@@ -707,8 +696,7 @@ mod tests {
                 repo_name.clone(),
                 Some("new repo desc".into()),
             )
-            .await
-            .expect("upsert_repository failed");
+            .await?;
         assert_eq!(upserted_repo.id, repository.id);
 
         // Test Create Release
@@ -720,8 +708,7 @@ mod tests {
                 Some("Release 1".into()),
                 Some("Body".into()),
             )
-            .await
-            .expect("create_release failed");
+            .await?;
         assert_eq!(release.tag_name, "v1.0.0");
 
         // Test Upsert Release
@@ -733,30 +720,20 @@ mod tests {
                 Some("Release 1 updated".into()),
                 Some("New body".into()),
             )
-            .await
-            .expect("upsert_release failed");
+            .await?;
         assert_eq!(upserted_release.id, release.id);
 
         // Test Upsert User Token
         repo.upsert_user_token(user.id, "github".into(), "enc_token".into())
-            .await
-            .expect("upsert_user_token failed");
+            .await?;
 
-        let tokens = repo
-            .list_user_tokens(user.id)
-            .await
-            .expect("list_user_tokens failed");
+        let tokens = repo.list_user_tokens(user.id).await?;
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].provider, "github");
 
         // Test Delete User Token
-        repo.delete_user_token(user.id, "github".into())
-            .await
-            .expect("delete_user_token failed");
-        let tokens_after = repo
-            .list_user_tokens(user.id)
-            .await
-            .expect("list_user_tokens failed");
+        repo.delete_user_token(user.id, "github".into()).await?;
+        let tokens_after = repo.list_user_tokens(user.id).await?;
         assert!(tokens_after.is_empty());
 
         // Test Create Audit Log
@@ -768,27 +745,21 @@ mod tests {
                 "test_action".into(),
                 Some(serde_json::json!({"key": "val"})),
             )
-            .await
-            .expect("create_audit_log failed");
+            .await?;
         assert_eq!(log.action, "test_action");
 
         // Test List Audit Logs
-        let logs = repo
-            .list_audit_logs(org.id, 10, 0)
-            .await
-            .expect("list_audit_logs failed");
+        let logs = repo.list_audit_logs(org.id, 10, 0).await?;
         assert!(!logs.is_empty());
         assert_eq!(logs[0].action, "test_action");
 
         // Also test missing entities
-        let missing_user = repo
-            .find_user_by_id(9999999)
-            .await
-            .expect("find_user_by_id failed on missing");
+        let missing_user = repo.find_user_by_id(9999999).await?;
         assert!(missing_user.is_none());
 
         // Bad connection test
         // To get 100% coverage, we need to test connection errors.
         // But get_conn is hard to make fail unless pool is closed or exhausted, which is hard.
+        Ok(())
     }
 }

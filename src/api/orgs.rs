@@ -65,7 +65,7 @@ mod tests {
     use actix_web::{test, App};
 
     #[actix_web::test]
-    async fn test_create_org() {
+    async fn test_create_org() -> Result<(), Box<dyn std::error::Error>> {
         let mut mock_repo = MockCddRepository::new();
         mock_repo.expect_create_organization().returning(|_, _, _| {
             Ok(Organization {
@@ -94,7 +94,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/orgs")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .set_json(CreateOrgPayload {
                 login: "test".into(),
                 description: None,
@@ -102,10 +105,11 @@ mod tests {
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED);
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_get_org_unauthorized() {
+    async fn test_get_org_unauthorized() -> Result<(), Box<dyn std::error::Error>> {
         let mut mock_repo = MockCddRepository::new();
         mock_repo.expect_get_user_role().returning(|_, _| Ok(None));
 
@@ -118,14 +122,18 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_get_org_authorized() {
+    async fn test_get_org_authorized() -> Result<(), Box<dyn std::error::Error>> {
         let mut mock_repo = MockCddRepository::new();
         mock_repo
             .expect_get_user_role()
@@ -148,14 +156,18 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_get_org_not_found() {
+    async fn test_get_org_not_found() -> Result<(), Box<dyn std::error::Error>> {
         let mut mock_repo = MockCddRepository::new();
         mock_repo
             .expect_get_user_role()
@@ -171,9 +183,13 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+        Ok(())
     }
 }

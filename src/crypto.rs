@@ -91,25 +91,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_local_secret_encryption_decryption() {
+    fn test_local_secret_encryption_decryption() -> Result<(), Box<dyn std::error::Error>> {
         let master_key = "my-super-secret-master-key-that-is-long-enough";
         let plaintext = "my-local-secret";
 
-        let encrypted = encrypt_local_secret(master_key, plaintext).expect("encryption failed");
+        let encrypted = encrypt_local_secret(master_key, plaintext)?;
         assert_ne!(encrypted, plaintext);
 
-        let decrypted = decrypt_local_secret(master_key, &encrypted).expect("decryption failed");
+        let decrypted = decrypt_local_secret(master_key, &encrypted)?;
         assert_eq!(decrypted, plaintext);
 
         let invalid_decrypt = decrypt_local_secret(master_key, "invalid");
         assert!(invalid_decrypt.is_err());
+        Ok(())
     }
 
     #[test]
-    fn test_github_secret() {
+    fn test_github_secret() -> Result<(), Box<dyn std::error::Error>> {
         // Need a valid 32 byte base64 key
         let key_b64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-        let result = encrypt_github_secret(key_b64, "my_secret").expect("Failed");
+        let result = encrypt_github_secret(key_b64, "my_secret")?;
         assert!(!result.is_empty());
 
         let invalid = encrypt_github_secret("invalid", "my_secret");
@@ -117,12 +118,14 @@ mod tests {
 
         let invalid_len = encrypt_github_secret("AAA=", "my_secret");
         assert!(invalid_len.is_err());
+        Ok(())
     }
 }
 
 #[test]
-fn test_local_secret_decryption_too_short() {
+fn test_local_secret_decryption_too_short() -> Result<(), Box<dyn std::error::Error>> {
     let master_key = "my-super-secret-master-key-that-is-long-enough";
     let invalid = decrypt_local_secret(master_key, "AAA=");
     assert!(invalid.is_err());
+    Ok(())
 }

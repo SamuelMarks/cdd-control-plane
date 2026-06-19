@@ -70,7 +70,7 @@ mod tests {
     use actix_web::{test, App};
 
     #[actix_web::test]
-    async fn test_store_token() {
+    async fn test_store_token() -> Result<(), Box<dyn std::error::Error>> {
         let mut mock_repo = MockCddRepository::new();
         mock_repo.expect_upsert_user_token().returning(|_, _, _| {
             Ok(UserToken {
@@ -86,22 +86,26 @@ mod tests {
         let app = test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-                .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+                .app_data(web::Data::new(AppConfig::load(None)?))
                 .configure(configure),
         )
         .await;
 
         let req = test::TestRequest::post()
             .uri("/tokens")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .set_json(serde_json::json!({ "provider": "npm", "token": "my_secret_token" }))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED);
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_list_tokens() {
+    async fn test_list_tokens() -> Result<(), Box<dyn std::error::Error>> {
         let mut mock_repo = MockCddRepository::new();
         mock_repo.expect_list_user_tokens().returning(|_| {
             Ok(vec![UserToken {
@@ -123,14 +127,18 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/tokens")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_delete_token() {
+    async fn test_delete_token() -> Result<(), Box<dyn std::error::Error>> {
         let mut mock_repo = MockCddRepository::new();
         mock_repo
             .expect_delete_user_token()
@@ -145,9 +153,13 @@ mod tests {
 
         let req = test::TestRequest::delete()
             .uri("/tokens/npm")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
     }
 }

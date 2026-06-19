@@ -59,7 +59,7 @@ mod tests {
     use super::*;
 
     #[actix_web::test]
-    async fn test_queue_config_invalid() {
+    async fn test_queue_config_invalid() -> Result<(), Box<dyn std::error::Error>> {
         let config = AppConfig {
             database_url: "".into(),
             server_bind: "".into(),
@@ -70,10 +70,11 @@ mod tests {
         };
         let result = QueueClient::new(&config).await;
         assert!(result.is_err());
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_queue_config_valid() {
+    async fn test_queue_config_valid() -> Result<(), Box<dyn std::error::Error>> {
         let config = AppConfig {
             database_url: "".into(),
             server_bind: "".into(),
@@ -85,7 +86,7 @@ mod tests {
         let client_result = QueueClient::new(&config).await;
         assert!(client_result.is_ok());
 
-        let client = client_result.expect("Failed to connect to redis");
+        let client = client_result?;
         let job = ReleaseSdkJob {
             release_id: 1,
             org_id: 2,
@@ -94,5 +95,6 @@ mod tests {
         };
         let enqueue_result = client.enqueue_release_sdk(&job).await;
         assert!(enqueue_result.is_ok());
+        Ok(())
     }
 }

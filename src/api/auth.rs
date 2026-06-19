@@ -160,7 +160,7 @@ mod tests {
     use super::*;
 
     #[actix_web::test]
-    async fn test_register() {
+    async fn test_register() -> Result<(), Box<dyn std::error::Error>> {
         use crate::db::models::User;
         use crate::db::repository::MockCddRepository;
         use actix_web::App;
@@ -178,7 +178,7 @@ mod tests {
         let app = actix_web::test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-                .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+                .app_data(web::Data::new(AppConfig::load(None)?))
                 .configure(configure),
         )
         .await;
@@ -193,10 +193,11 @@ mod tests {
             .to_request();
         let resp = actix_web::test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED);
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_login_success() {
+    async fn test_login_success() -> Result<(), Box<dyn std::error::Error>> {
         use crate::db::models::User;
         use crate::db::repository::MockCddRepository;
         use actix_web::App;
@@ -217,7 +218,7 @@ mod tests {
         let app = actix_web::test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-                .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+                .app_data(web::Data::new(AppConfig::load(None)?))
                 .configure(configure),
         )
         .await;
@@ -231,10 +232,11 @@ mod tests {
             .to_request();
         let resp = actix_web::test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
     }
 
     #[actix_web::test]
-    async fn test_login_unauthorized() {
+    async fn test_login_unauthorized() -> Result<(), Box<dyn std::error::Error>> {
         use crate::db::repository::MockCddRepository;
         use actix_web::App;
         let mut mock_repo = MockCddRepository::new();
@@ -245,7 +247,7 @@ mod tests {
         let app = actix_web::test::init_service(
             App::new()
                 .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-                .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+                .app_data(web::Data::new(AppConfig::load(None)?))
                 .configure(configure),
         )
         .await;
@@ -259,16 +261,18 @@ mod tests {
             .to_request();
         let resp = actix_web::test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        Ok(())
     }
 }
 
 #[test]
-fn test_verify_password_invalid_hash() {
+fn test_verify_password_invalid_hash() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!verify_password("pwd", "invalid_hash_string"));
+    Ok(())
 }
 
 #[actix_web::test]
-async fn test_register_no_password() {
+async fn test_register_no_password() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::models::User;
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
@@ -286,7 +290,7 @@ async fn test_register_no_password() {
     let app = actix_web::test::init_service(
         App::new()
             .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .app_data(web::Data::new(AppConfig::load(None)?))
             .configure(configure),
     )
     .await;
@@ -301,10 +305,11 @@ async fn test_register_no_password() {
         .to_request();
     let resp = actix_web::test::call_service(&app, req).await;
     assert_eq!(resp.status(), actix_web::http::StatusCode::CREATED);
+    Ok(())
 }
 
 #[actix_web::test]
-async fn test_login_wrong_password() {
+async fn test_login_wrong_password() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::models::User;
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
@@ -325,7 +330,7 @@ async fn test_login_wrong_password() {
     let app = actix_web::test::init_service(
         App::new()
             .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .app_data(web::Data::new(AppConfig::load(None)?))
             .configure(configure),
     )
     .await;
@@ -339,10 +344,11 @@ async fn test_login_wrong_password() {
         .to_request();
     let resp = actix_web::test::call_service(&app, req).await;
     assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+    Ok(())
 }
 
 #[actix_web::test]
-async fn test_login_no_password() {
+async fn test_login_no_password() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::models::User;
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
@@ -363,7 +369,7 @@ async fn test_login_no_password() {
     let app = actix_web::test::init_service(
         App::new()
             .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .app_data(web::Data::new(AppConfig::load(None)?))
             .configure(configure),
     )
     .await;
@@ -377,10 +383,11 @@ async fn test_login_no_password() {
         .to_request();
     let resp = actix_web::test::call_service(&app, req).await;
     assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+    Ok(())
 }
 
 #[actix_web::test]
-async fn test_login_user_no_hash() {
+async fn test_login_user_no_hash() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::models::User;
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
@@ -400,7 +407,7 @@ async fn test_login_user_no_hash() {
     let app = actix_web::test::init_service(
         App::new()
             .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .app_data(web::Data::new(AppConfig::load(None)?))
             .configure(configure),
     )
     .await;
@@ -414,10 +421,11 @@ async fn test_login_user_no_hash() {
         .to_request();
     let resp = actix_web::test::call_service(&app, req).await;
     assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+    Ok(())
 }
 
 #[actix_web::test]
-async fn test_login_db_error() {
+async fn test_login_db_error() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
     use diesel::result::Error;
@@ -429,7 +437,7 @@ async fn test_login_db_error() {
     let app = actix_web::test::init_service(
         App::new()
             .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .app_data(web::Data::new(AppConfig::load(None)?))
             .configure(configure),
     )
     .await;
@@ -443,10 +451,11 @@ async fn test_login_db_error() {
         .to_request();
     let resp = actix_web::test::call_service(&app, req).await;
     assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+    Ok(())
 }
 
 #[actix_web::test]
-async fn test_register_db_error() {
+async fn test_register_db_error() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
     use diesel::result::Error;
@@ -458,7 +467,7 @@ async fn test_register_db_error() {
     let app = actix_web::test::init_service(
         App::new()
             .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
-            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .app_data(web::Data::new(AppConfig::load(None)?))
             .configure(configure),
     )
     .await;
@@ -476,4 +485,5 @@ async fn test_register_db_error() {
         resp.status(),
         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
     );
+    Ok(())
 }

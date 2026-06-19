@@ -61,13 +61,14 @@ impl ResponseError for Error {
 mod tests {
     use super::*;
     #[test]
-    fn test_error_display() {
+    fn test_error_display() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(Error::InternalError.to_string(), "Internal server error");
+        Ok(())
     }
 }
 
 #[test]
-fn test_error_response() {
+fn test_error_response() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(
         Error::InternalError.error_response().status(),
         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
@@ -90,4 +91,5 @@ fn test_error_response() {
             .status(),
         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
     );
+    Ok(())
 }

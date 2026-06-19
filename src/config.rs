@@ -65,14 +65,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_app_config_load_defaults() {
-        let config = AppConfig::load(None).expect("failed to load config");
+    fn test_app_config_load_defaults() -> Result<(), Box<dyn std::error::Error>> {
+        let config = AppConfig::load(None)?;
         assert_eq!(config.jwt_secret, "super-secret-key");
+        Ok(())
     }
 }
 
 #[test]
-fn test_app_config_load_with_file() {
-    let config = AppConfig::load(Some("non_existent_file.toml")).expect("failed to load config");
+fn test_app_config_load_with_file() -> Result<(), Box<dyn std::error::Error>> {
+    let config = AppConfig::load(Some("non_existent_file.toml"))?;
     assert_eq!(config.jwt_secret, "super-secret-key");
+    Ok(())
 }
