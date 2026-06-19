@@ -39,7 +39,7 @@ impl AppConfig {
         let mut builder = config::Config::builder()
             .set_default("database_url", "postgres://postgres:password@localhost/cdd")
             .map_err(|_| crate::error::Error::InternalError)?
-            .set_default("server_bind", "0.0.0.0:8080")
+            .set_default("server_bind", "0.0.0.0:8081")
             .map_err(|_| crate::error::Error::InternalError)?
             .set_default("jwt_secret", "super-secret-key")
             .map_err(|_| crate::error::Error::InternalError)?

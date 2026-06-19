@@ -1,3 +1,5 @@
+#![warn(clippy::missing_docs_in_private_items)]
+#![warn(missing_docs)]
 #![deny(missing_docs)]
 
 //! cdd-control-plane
@@ -14,6 +16,7 @@ pub mod db {
     //! Database module
     pub mod models;
     pub mod repository;
+    #[allow(missing_docs)]
     pub mod schema;
 }
 

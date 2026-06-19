@@ -20,12 +20,13 @@ pub struct ReleaseSdkJob {
 /// A client for enqueuing jobs to Redis.
 #[derive(Clone)]
 pub struct QueueClient {
+    /// The underlying Redis client.
     client: Client,
 }
 
 impl QueueClient {
     /// Initialize a new Redis queue client.
-    #[cfg(not(tarpaulin_include))]
+
     pub async fn new(config: &AppConfig) -> Result<Self, crate::error::Error> {
         let redis_config =
             Config::from_url(&config.redis_url).map_err(|_| crate::error::Error::InternalError)?;
@@ -40,7 +41,7 @@ impl QueueClient {
     }
 
     /// Enqueue a "Release SDK" job.
-    #[cfg(not(tarpaulin_include))]
+
     pub async fn enqueue_release_sdk(
         &self,
         job: &ReleaseSdkJob,
@@ -72,31 +73,28 @@ mod tests {
         let result = QueueClient::new(&config).await;
         assert!(result.is_err());
     }
-}
 
-#[actix_web::test]
-async fn test_enqueue_release_sdk_error() {
-    // Enqueuing before init or connect should throw an error, but wait, without valid connection...
-    // Let's just create an invalid config and test the new method fails
-    let _config = AppConfig {
-        database_url: "".into(),
-        server_bind: "".into(),
-        jwt_secret: "".into(),
-        webhook_secret: "".into(),
-        github_token: None,
-        redis_url: "redis://127.0.0.1:0/".into(), // Invalid port
-    };
-    // This will attempt to connect, but maybe timeout?
-    // Actually, we already covered `QueueClient::new` erroring on bad URL.
-}
+    #[actix_web::test]
+    async fn test_queue_config_valid() {
+        let config = AppConfig {
+            database_url: "".into(),
+            server_bind: "".into(),
+            jwt_secret: "".into(),
+            webhook_secret: "".into(),
+            github_token: None,
+            redis_url: "redis://127.0.0.1:6379/0".into(),
+        };
+        let client_result = QueueClient::new(&config).await;
+        assert!(client_result.is_ok());
 
-#[actix_web::test]
-async fn test_enqueue_release_sdk_error_2() {
-    let _job = ReleaseSdkJob {
-        release_id: 1,
-        org_id: 1,
-        repo_id: 1,
-        tag_name: "v1".into(),
-    };
-    // Just instantiate dummy job for coverage. Connection error handles lpush error
+        let client = client_result.expect("Failed to connect to redis");
+        let job = ReleaseSdkJob {
+            release_id: 1,
+            org_id: 2,
+            repo_id: 3,
+            tag_name: "v1.0.0".into(),
+        };
+        let enqueue_result = client.enqueue_release_sdk(&job).await;
+        assert!(enqueue_result.is_ok());
+    }
 }

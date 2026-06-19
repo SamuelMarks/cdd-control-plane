@@ -58,6 +58,7 @@ fn generate_token(
     .map_err(|_| crate::error::Error::InternalError)
 }
 
+/// Hash a plaintext password using Argon2.
 fn hash_password(password: &str) -> Result<String, crate::error::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -67,6 +68,7 @@ fn hash_password(password: &str) -> Result<String, crate::error::Error> {
     Ok(hash.to_string())
 }
 
+/// Verify a plaintext password against an Argon2 hash.
 fn verify_password(password: &str, hash: &str) -> bool {
     if let Ok(parsed_hash) = PasswordHash::new(hash) {
         Argon2::default()
@@ -375,4 +377,103 @@ async fn test_login_no_password() {
         .to_request();
     let resp = actix_web::test::call_service(&app, req).await;
     assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+}
+
+#[actix_web::test]
+async fn test_login_user_no_hash() {
+    use crate::db::models::User;
+    use crate::db::repository::MockCddRepository;
+    use actix_web::App;
+    let mut mock_repo = MockCddRepository::new();
+    mock_repo
+        .expect_find_user_by_username()
+        .returning(move |_| {
+            Ok(Some(User {
+                id: 1,
+                github_id: Some(123),
+                username: "test".into(),
+                email: "test@test.com".into(),
+                password_hash: None,
+            }))
+        });
+
+    let app = actix_web::test::init_service(
+        App::new()
+            .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
+            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .configure(configure),
+    )
+    .await;
+
+    let req = actix_web::test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(LoginPayload {
+            username: "test".into(),
+            password: Some("pwd".into()),
+        })
+        .to_request();
+    let resp = actix_web::test::call_service(&app, req).await;
+    assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+}
+
+#[actix_web::test]
+async fn test_login_db_error() {
+    use crate::db::repository::MockCddRepository;
+    use actix_web::App;
+    use diesel::result::Error;
+    let mut mock_repo = MockCddRepository::new();
+    mock_repo
+        .expect_find_user_by_username()
+        .returning(|_| Err(Error::NotFound));
+
+    let app = actix_web::test::init_service(
+        App::new()
+            .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
+            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .configure(configure),
+    )
+    .await;
+
+    let req = actix_web::test::TestRequest::post()
+        .uri("/auth/login")
+        .set_json(LoginPayload {
+            username: "test".into(),
+            password: Some("pwd".into()),
+        })
+        .to_request();
+    let resp = actix_web::test::call_service(&app, req).await;
+    assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+}
+
+#[actix_web::test]
+async fn test_register_db_error() {
+    use crate::db::repository::MockCddRepository;
+    use actix_web::App;
+    use diesel::result::Error;
+    let mut mock_repo = MockCddRepository::new();
+    mock_repo
+        .expect_create_user()
+        .returning(|_, _, _, _| Err(Error::NotFound));
+
+    let app = actix_web::test::init_service(
+        App::new()
+            .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
+            .app_data(web::Data::new(AppConfig::load(None).expect("config")))
+            .configure(configure),
+    )
+    .await;
+
+    let req = actix_web::test::TestRequest::post()
+        .uri("/auth/register")
+        .set_json(RegisterPayload {
+            username: "test".into(),
+            email: "test@test.com".into(),
+            password: Some("pwd".into()),
+        })
+        .to_request();
+    let resp = actix_web::test::call_service(&app, req).await;
+    assert_eq!(
+        resp.status(),
+        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
 }

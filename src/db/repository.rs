@@ -1,4 +1,3 @@
-#![cfg(not(tarpaulin_include))]
 //!n//! Database repository module.n
 
 use crate::db::models::*;
@@ -544,5 +543,252 @@ impl CddRepository for PgRepository {
         })
         .await
         .map_err(|_| Error::NotFound)?
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diesel::r2d2::{ConnectionManager, Pool};
+    use uuid::Uuid;
+
+    fn get_test_pool() -> DbPool {
+        let database_url = std::env::var("CDD__DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost/cdd_test".to_string());
+        let manager = ConnectionManager::<diesel::PgConnection>::new(database_url);
+        Pool::builder()
+            .max_size(2)
+            .build(manager)
+            .expect("Failed to create pool.")
+    }
+
+    fn generate_unique_name(prefix: &str) -> String {
+        format!(
+            "{}_{}",
+            prefix,
+            Uuid::new_v4().to_string().replace("-", "")[..8].to_string()
+        )
+    }
+
+    #[actix_web::test]
+    async fn test_all_repository_methods() {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        use std::time::SystemTime;
+        static COUNTER: AtomicI64 = AtomicI64::new(0);
+
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_nanos() as i64;
+
+        let github_id_user: i64 = now
+            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
+            .abs()
+            % 100000000;
+        let github_id_org: i64 = now
+            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
+            .abs()
+            % 100000000;
+        let github_id_repo: i64 = now
+            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
+            .abs()
+            % 100000000;
+        let github_id_release: i64 = now
+            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
+            .abs()
+            % 100000000;
+
+        let pool = get_test_pool();
+        let repo = PgRepository { pool: pool.clone() };
+
+        // Test User Creation and Lookup
+        let username = generate_unique_name("user");
+        let email = format!("{}@example.com", username);
+        let user = repo
+            .create_user(
+                Some(github_id_user),
+                username.clone(),
+                email.clone(),
+                Some("hash".into()),
+            )
+            .await
+            .expect("create_user failed");
+
+        assert_eq!(user.username, username);
+        assert_eq!(user.github_id, Some(github_id_user));
+
+        // Test Find by Username
+        let found_user = repo
+            .find_user_by_username(username.clone())
+            .await
+            .expect("find_user_by_username failed")
+            .expect("user not found");
+        assert_eq!(found_user.id, user.id);
+
+        // Test Find by ID
+        let found_by_id = repo
+            .find_user_by_id(user.id)
+            .await
+            .expect("find_user_by_id failed")
+            .expect("user not found by id");
+        assert_eq!(found_by_id.username, username);
+
+        // Test Upsert User
+        let upserted_user = repo
+            .upsert_user(
+                github_id_user,
+                username.clone(),
+                format!("new{}@example.com", username),
+            )
+            .await
+            .expect("upsert_user failed");
+        assert_eq!(upserted_user.id, user.id); // Should update same user
+
+        // Test Create Organization
+        let org_login = generate_unique_name("org");
+        let org = repo
+            .create_organization(Some(github_id_org), org_login.clone(), Some("desc".into()))
+            .await
+            .expect("create_organization failed");
+        assert_eq!(org.login, org_login);
+
+        // Test Get Organization
+        let found_org = repo
+            .get_organization(org.id)
+            .await
+            .expect("get_organization failed")
+            .expect("org not found");
+        assert_eq!(found_org.id, org.id);
+
+        // Test Upsert Organization
+        let upserted_org = repo
+            .upsert_organization(github_id_org, org_login.clone(), Some("new_desc".into()))
+            .await
+            .expect("upsert_organization failed");
+        assert_eq!(upserted_org.id, org.id);
+
+        // Test Add User to Organization & Role
+        repo.add_user_to_organization(org.id, user.id, "admin".into())
+            .await
+            .expect("add_user_to_organization failed");
+        let role = repo
+            .get_user_role(org.id, user.id)
+            .await
+            .expect("get_user_role failed")
+            .expect("role not found");
+        assert_eq!(role, "admin");
+
+        // Test Create Repository
+        let repo_name = generate_unique_name("repo");
+        let repository = repo
+            .create_repository(
+                org.id,
+                Some(github_id_repo),
+                repo_name.clone(),
+                Some("repo desc".into()),
+            )
+            .await
+            .expect("create_repository failed");
+        assert_eq!(repository.name, repo_name);
+
+        // Test Get Repository
+        let found_repo = repo
+            .get_repository(repository.id)
+            .await
+            .expect("get_repository failed")
+            .expect("repository not found");
+        assert_eq!(found_repo.id, repository.id);
+
+        // Test Upsert Repository
+        let upserted_repo = repo
+            .upsert_repository(
+                org.id,
+                github_id_repo,
+                repo_name.clone(),
+                Some("new repo desc".into()),
+            )
+            .await
+            .expect("upsert_repository failed");
+        assert_eq!(upserted_repo.id, repository.id);
+
+        // Test Create Release
+        let release = repo
+            .create_release(
+                repository.id,
+                Some(github_id_release),
+                "v1.0.0".into(),
+                Some("Release 1".into()),
+                Some("Body".into()),
+            )
+            .await
+            .expect("create_release failed");
+        assert_eq!(release.tag_name, "v1.0.0");
+
+        // Test Upsert Release
+        let upserted_release = repo
+            .upsert_release(
+                repository.id,
+                github_id_release,
+                "v1.0.0".into(),
+                Some("Release 1 updated".into()),
+                Some("New body".into()),
+            )
+            .await
+            .expect("upsert_release failed");
+        assert_eq!(upserted_release.id, release.id);
+
+        // Test Upsert User Token
+        repo.upsert_user_token(user.id, "github".into(), "enc_token".into())
+            .await
+            .expect("upsert_user_token failed");
+
+        let tokens = repo
+            .list_user_tokens(user.id)
+            .await
+            .expect("list_user_tokens failed");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].provider, "github");
+
+        // Test Delete User Token
+        repo.delete_user_token(user.id, "github".into())
+            .await
+            .expect("delete_user_token failed");
+        let tokens_after = repo
+            .list_user_tokens(user.id)
+            .await
+            .expect("list_user_tokens failed");
+        assert!(tokens_after.is_empty());
+
+        // Test Create Audit Log
+        let log = repo
+            .create_audit_log(
+                org.id,
+                Some(repository.id),
+                user.id,
+                "test_action".into(),
+                Some(serde_json::json!({"key": "val"})),
+            )
+            .await
+            .expect("create_audit_log failed");
+        assert_eq!(log.action, "test_action");
+
+        // Test List Audit Logs
+        let logs = repo
+            .list_audit_logs(org.id, 10, 0)
+            .await
+            .expect("list_audit_logs failed");
+        assert!(!logs.is_empty());
+        assert_eq!(logs[0].action, "test_action");
+
+        // Also test missing entities
+        let missing_user = repo
+            .find_user_by_id(9999999)
+            .await
+            .expect("find_user_by_id failed on missing");
+        assert!(missing_user.is_none());
+
+        // Bad connection test
+        // To get 100% coverage, we need to test connection errors.
+        // But get_conn is hard to make fail unless pool is closed or exhausted, which is hard.
     }
 }

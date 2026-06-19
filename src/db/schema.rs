@@ -1,7 +1,16 @@
-#![cfg(not(tarpaulin_include))]
-#![allow(missing_docs)]
-
 // @generated automatically by Diesel CLI.
+
+diesel::table! {
+    audit_logs (id) {
+        id -> Int4,
+        org_id -> Int4,
+        repo_id -> Nullable<Int4>,
+        user_id -> Int4,
+        action -> Varchar,
+        metadata_json -> Nullable<Jsonb>,
+        timestamp -> Timestamp,
+    }
+}
 
 diesel::table! {
     organization_users (organization_id, user_id) {
@@ -42,21 +51,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    users (id) {
-        id -> Int4,
-        github_id -> Nullable<Int8>,
-        username -> Varchar,
-        email -> Varchar,
-        password_hash -> Nullable<Varchar>,
-    }
-}
-
-diesel::joinable!(organization_users -> organizations (organization_id));
-diesel::joinable!(organization_users -> users (user_id));
-diesel::joinable!(releases -> repositories (repository_id));
-diesel::joinable!(repositories -> organizations (organization_id));
-
-diesel::table! {
     user_tokens (id) {
         id -> Int4,
         user_id -> Int4,
@@ -67,23 +61,24 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(user_tokens -> users (user_id));
-
 diesel::table! {
-    audit_logs (id) {
+    users (id) {
         id -> Int4,
-        org_id -> Int4,
-        repo_id -> Nullable<Int4>,
-        user_id -> Int4,
-        action -> Varchar,
-        metadata_json -> Nullable<Jsonb>,
-        timestamp -> Timestamp,
+        github_id -> Nullable<Int8>,
+        username -> Varchar,
+        email -> Varchar,
+        password_hash -> Nullable<Varchar>,
     }
 }
 
 diesel::joinable!(audit_logs -> organizations (org_id));
 diesel::joinable!(audit_logs -> repositories (repo_id));
 diesel::joinable!(audit_logs -> users (user_id));
+diesel::joinable!(organization_users -> organizations (organization_id));
+diesel::joinable!(organization_users -> users (user_id));
+diesel::joinable!(releases -> repositories (repository_id));
+diesel::joinable!(repositories -> organizations (organization_id));
+diesel::joinable!(user_tokens -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     audit_logs,
