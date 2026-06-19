@@ -1,6 +1,7 @@
 #![warn(clippy::missing_docs_in_private_items)]
 #![warn(missing_docs)]
 #![cfg(not(tarpaulin_include))]
+#![cfg_attr(coverage, allow(unused_imports))]
 //! Main entry point for the cdd-control-plane web server.
 
 use actix_web::{middleware, web, App, HttpServer};
@@ -13,6 +14,7 @@ use std::sync::Arc;
 
 /// The main application entry point.
 #[actix_web::main]
+#[cfg(not(coverage))]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 

@@ -26,7 +26,6 @@ pub struct QueueClient {
 
 impl QueueClient {
     /// Initialize a new Redis queue client.
-
     pub async fn new(config: &AppConfig) -> Result<Self, crate::error::Error> {
         let redis_config =
             Config::from_url(&config.redis_url).map_err(|_| crate::error::Error::InternalError)?;
@@ -41,7 +40,6 @@ impl QueueClient {
     }
 
     /// Enqueue a "Release SDK" job.
-
     pub async fn enqueue_release_sdk(
         &self,
         job: &ReleaseSdkJob,
