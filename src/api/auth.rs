@@ -202,7 +202,7 @@ mod tests {
         use crate::db::repository::MockCddRepository;
         use actix_web::App;
         let mut mock_repo = MockCddRepository::new();
-        let hashed_pw = hash_password("pwd").unwrap_or_default();
+        let hashed_pw = hash_password("pwd")?;
         mock_repo
             .expect_find_user_by_username()
             .returning(move |_| {
@@ -314,7 +314,7 @@ async fn test_login_wrong_password() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
     let mut mock_repo = MockCddRepository::new();
-    let hashed_pw = hash_password("pwd").unwrap_or_default();
+    let hashed_pw = hash_password("pwd")?;
     mock_repo
         .expect_find_user_by_username()
         .returning(move |_| {
@@ -353,7 +353,7 @@ async fn test_login_no_password() -> Result<(), Box<dyn std::error::Error>> {
     use crate::db::repository::MockCddRepository;
     use actix_web::App;
     let mut mock_repo = MockCddRepository::new();
-    let hashed_pw = hash_password("pwd").unwrap_or_default();
+    let hashed_pw = hash_password("pwd")?;
     mock_repo
         .expect_find_user_by_username()
         .returning(move |_| {

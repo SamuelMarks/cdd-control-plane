@@ -30,8 +30,14 @@ pub async fn list_audit_logs(
         return Err(crate::error::Error::Unauthorized);
     }
 
-    let limit = query.limit.unwrap_or(50);
-    let offset = query.offset.unwrap_or(0);
+    let limit = match query.limit {
+        Some(l) => l,
+        None => 50,
+    };
+    let offset = match query.offset {
+        Some(o) => o,
+        None => 0,
+    };
 
     let logs = repo.list_audit_logs(org_id, limit, offset).await?;
     Ok(HttpResponse::Ok().json(logs))
@@ -92,6 +98,35 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit?limit=10&offset=5")
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_list_audit_logs_authorized_default() -> Result<(), Box<dyn std::error::Error>> {
+        let mut mock_repo = MockCddRepository::new();
+        mock_repo
+            .expect_get_user_role()
+            .returning(|_, _| Ok(Some("member".to_string())));
+        mock_repo
+            .expect_list_audit_logs()
+            .returning(|_, _, _| Ok(vec![]));
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
+                .configure(configure),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/orgs/1/audit")
             .insert_header((
                 "Authorization",
                 format!("Bearer {}", generate_test_token()?),

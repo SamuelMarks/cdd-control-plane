@@ -38,10 +38,10 @@ impl FromRequest for AuthenticatedUser {
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
         // Read the JWT secret from AppConfig stored in app data, falling back to
         // the compile-time default so that tests without AppConfig still work.
-        let secret: Vec<u8> = req
-            .app_data::<actix_web::web::Data<AppConfig>>()
-            .map(|cfg| cfg.jwt_secret.as_bytes().to_vec())
-            .unwrap_or_else(|| b"super-secret-key".to_vec());
+        let secret: Vec<u8> = match req.app_data::<actix_web::web::Data<AppConfig>>() {
+            Some(cfg) => cfg.jwt_secret.as_bytes().to_vec(),
+            None => b"super-secret-key".to_vec(),
+        };
 
         let auth = BearerAuth::from_request(req, payload).into_inner();
 

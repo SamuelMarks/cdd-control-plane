@@ -18,20 +18,24 @@ use std::sync::Arc;
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let config = AppConfig::load(None).unwrap_or_else(|e| {
-        log::error!("Failed to load configuration: {}", e);
-        std::process::exit(1);
-    });
+    let config = match AppConfig::load(None) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("Failed to load configuration: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     let server_bind = config.server_bind.clone();
 
     let manager = ConnectionManager::<PgConnection>::new(&config.database_url);
-    let db_pool: DbPool = diesel::r2d2::Pool::builder()
-        .build(manager)
-        .unwrap_or_else(|e| {
+    let db_pool: DbPool = match diesel::r2d2::Pool::builder().build(manager) {
+        Ok(p) => p,
+        Err(e) => {
             log::error!("Failed to connect to database: {}", e);
             std::process::exit(1);
-        });
+        }
+    };
 
     let repo: Arc<dyn CddRepository> = Arc::new(PgRepository {
         pool: db_pool.clone(),
