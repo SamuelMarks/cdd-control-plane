@@ -63,7 +63,10 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
@@ -89,7 +92,10 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit?limit=10&offset=5")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
@@ -115,10 +121,43 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/orgs/1/audit")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_list_audit_logs_db_error() -> Result<(), Box<dyn std::error::Error>> {
+        use diesel::result::Error;
+        let mut mock_repo = MockCddRepository::new();
+        mock_repo
+            .expect_get_user_role()
+            .returning(|_, _| Err(Error::NotFound));
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
+                .configure(configure),
+        )
+        .await;
+
+        let req = test::TestRequest::get()
+            .uri("/orgs/1/audit")
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
         Ok(())
     }
 }

@@ -91,5 +91,12 @@ fn test_error_response() -> Result<(), Box<dyn std::error::Error>> {
             .status(),
         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
     );
+    let mock_pool_error = diesel::r2d2::PoolError::QueryBuilderError(Box::new(
+        std::io::Error::new(std::io::ErrorKind::Other, "test"),
+    ));
+    assert_eq!(
+        Error::Pool(mock_pool_error).error_response().status(),
+        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
     Ok(())
 }

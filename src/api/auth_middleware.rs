@@ -1,4 +1,3 @@
-#![cfg(not(tarpaulin_include))]
 //!n//! Middleware for authentication.n
 
 use crate::config::AppConfig;
@@ -70,19 +69,18 @@ impl FromRequest for AuthenticatedUser {
 ///
 /// Used by test helpers across the codebase to produce a valid Bearer token
 /// without needing a running server.
-pub fn generate_test_token() -> String {
+pub fn generate_test_token() -> Result<String, Box<dyn std::error::Error>> {
     use jsonwebtoken::{encode, EncodingKey, Header};
     let claims = Claims {
         sub: 1,
         exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
         username: "testuser".to_string(),
     };
-    encode(
+    Ok(encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(b"super-secret-key"),
-    )
-    .unwrap_or_default()
+    )?)
 }
 
 #[cfg(test)]
@@ -99,7 +97,7 @@ mod tests {
     {
         let app = test::init_service(App::new().route("/", web::get().to(dummy_handler))).await;
 
-        let token = generate_test_token();
+        let token = generate_test_token()?;
         let req = test::TestRequest::get()
             .uri("/")
             .insert_header(("Authorization", format!("Bearer {}", token)))
@@ -141,7 +139,7 @@ mod tests {
         )
         .await;
 
-        let token = generate_test_token();
+        let token = generate_test_token()?;
         let req = test::TestRequest::get()
             .uri("/")
             .insert_header(("Authorization", format!("Bearer {}", token)))

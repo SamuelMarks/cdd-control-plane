@@ -93,7 +93,10 @@ mod tests {
 
         let req = test::TestRequest::post()
             .uri("/tokens")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .set_json(serde_json::json!({ "provider": "npm", "token": "my_secret_token" }))
             .to_request();
         let resp = test::call_service(&app, req).await;
@@ -124,7 +127,10 @@ mod tests {
 
         let req = test::TestRequest::get()
             .uri("/tokens")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
@@ -147,10 +153,45 @@ mod tests {
 
         let req = test::TestRequest::delete()
             .uri("/tokens/npm")
-            .insert_header(("Authorization", format!("Bearer {}", generate_test_token())))
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
             .to_request();
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_store_token_db_error() -> Result<(), Box<dyn std::error::Error>> {
+        use diesel::result::Error;
+        let mut mock_repo = MockCddRepository::new();
+        mock_repo
+            .expect_upsert_user_token()
+            .returning(|_, _, _| Err(crate::error::Error::Database(Error::NotFound)));
+
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(Arc::new(mock_repo) as Arc<dyn CddRepository>))
+                .app_data(web::Data::new(AppConfig::load(None)?))
+                .configure(configure),
+        )
+        .await;
+
+        let req = test::TestRequest::post()
+            .uri("/tokens")
+            .insert_header((
+                "Authorization",
+                format!("Bearer {}", generate_test_token()?),
+            ))
+            .set_json(serde_json::json!({ "provider": "npm", "token": "my_secret_token" }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
         Ok(())
     }
 }

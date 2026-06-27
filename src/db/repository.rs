@@ -556,10 +556,10 @@ mod tests {
         let database_url = std::env::var("CDD__DATABASE_URL")
             .unwrap_or_else(|_| "postgres://postgres:password@localhost/cdd_test".to_string());
         let manager = ConnectionManager::<diesel::PgConnection>::new(database_url);
-        Pool::builder()
-            .max_size(2)
-            .build(manager)
-            .expect("failed to build pool")
+        match Pool::builder().max_size(2).build(manager) {
+            Ok(pool) => pool,
+            Err(_) => std::process::exit(1),
+        }
     }
 
     fn generate_unique_name(prefix: &str) -> String {
@@ -578,7 +578,7 @@ mod tests {
 
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("Time went backwards")
+            .map_err(|e| e.to_string())?
             .as_nanos() as i64;
 
         let github_id_user: i64 = now
