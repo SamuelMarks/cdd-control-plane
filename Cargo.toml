@@ -10,9 +10,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.10", features = ["v4", "serde"] }
-derive_more = { version = "1.0", features = ["full"] }
+derive_more = { version = "1.0", features = ["display", "from"] }
 dotenvy = "0.15"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt", "macros", "net", "time"] }
 argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 log = "0.4"
@@ -20,7 +20,7 @@ env_logger = "0.11"
 diesel_migrations = { version = "2.3.2", features = ["postgres"] }
 utoipa = { version = "5.5", features = ["actix_extras", "chrono", "macros", "uuid"] }
 async-trait = "0.1.89"
-config = "0.15"
+config = { version = "0.15", default-features = false, features = ["toml"] }
 actix-web-httpauth = "0.8.2"
 futures-util = "0.3.32"
 crypto_box = { version = "0.9.1", features = ["seal"] }
@@ -34,3 +34,11 @@ tokio = { version = "1", features = ["test-util"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ["cfg(tarpaulin_include)"] }
+
+[profile.dev.package."*"]
+opt-level = 0
+debug = 0
+
+[profile.dev]
+debug = 1
+
