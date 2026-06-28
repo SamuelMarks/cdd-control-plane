@@ -91,12 +91,20 @@ fn test_error_response() -> Result<(), Box<dyn std::error::Error>> {
             .status(),
         actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
     );
-    let mock_pool_error = diesel::r2d2::PoolError::QueryBuilderError(Box::new(
-        std::io::Error::new(std::io::ErrorKind::Other, "test"),
-    ));
-    assert_eq!(
-        Error::Pool(mock_pool_error).error_response().status(),
-        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
-    );
+    Ok(())
+}
+#[test]
+fn test_pool_error() -> Result<(), Box<dyn std::error::Error>> {
+    let manager = diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
+    let pool_res = diesel::r2d2::Pool::builder().connection_timeout(std::time::Duration::from_millis(1)).build(manager);
+    match pool_res {
+        Ok(_) => panic!("Expected error"),
+        Err(pool_err) => {
+            assert_eq!(
+                crate::error::Error::Pool(pool_err).error_response().status(),
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+            );
+        }
+    }
     Ok(())
 }

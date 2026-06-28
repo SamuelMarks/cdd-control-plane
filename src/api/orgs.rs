@@ -199,7 +199,7 @@ mod tests {
         let mut mock_repo = MockCddRepository::new();
         mock_repo
             .expect_create_organization()
-            .returning(|_, _| Err(Error::NotFound));
+            .returning(|_, _, _| Err(Error::NotFound));
 
         let app = test::init_service(
             App::new()

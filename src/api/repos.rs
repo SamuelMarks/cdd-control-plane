@@ -273,7 +273,7 @@ mod tests {
         let mut mock_repo = MockCddRepository::new();
         mock_repo
             .expect_get_user_role()
-            .returning(|_, _| Err(crate::error::Error::Database(Error::NotFound)));
+            .returning(|_, _| Err(Error::NotFound));
 
         let app = test::init_service(
             App::new()
