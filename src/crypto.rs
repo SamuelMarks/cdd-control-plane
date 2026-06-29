@@ -77,8 +77,7 @@ pub fn decrypt_local_secret(
         return Err(crate::error::Error::InternalError);
     }
 
-    #[allow(deprecated)]
-    let nonce = *crypto_secretbox::Nonce::from_slice(&combined[..24]);
+    let nonce = crypto_secretbox::Nonce::clone_from_slice(&combined[..24]);
     let plaintext = cipher
         .decrypt(&nonce, &combined[24..])
         .map_err(|_| crate::error::Error::InternalError)?;

@@ -759,7 +759,14 @@ mod tests {
 
         // Bad connection test
         // To get 100% coverage, we need to test connection errors.
-        // But get_conn is hard to make fail unless pool is closed or exhausted, which is hard.
+        let manager =
+            diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
+        let pool = diesel::r2d2::Pool::builder()
+            .connection_timeout(std::time::Duration::from_millis(1))
+            .build_unchecked(manager);
+        let repo_invalid = PgRepository { pool };
+        assert!(repo_invalid.get_conn().is_err());
+
         Ok(())
     }
 }

@@ -95,13 +95,18 @@ fn test_error_response() -> Result<(), Box<dyn std::error::Error>> {
 }
 #[test]
 fn test_pool_error() -> Result<(), Box<dyn std::error::Error>> {
-    let manager = diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
-    let pool_res = diesel::r2d2::Pool::builder().connection_timeout(std::time::Duration::from_millis(1)).build(manager);
+    let manager =
+        diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
+    let pool_res = diesel::r2d2::Pool::builder()
+        .connection_timeout(std::time::Duration::from_millis(1))
+        .build(manager);
     match pool_res {
         Ok(_) => panic!("Expected error"),
         Err(pool_err) => {
             assert_eq!(
-                crate::error::Error::Pool(pool_err).error_response().status(),
+                crate::error::Error::Pool(pool_err)
+                    .error_response()
+                    .status(),
                 actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
             );
         }
