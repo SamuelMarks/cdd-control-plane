@@ -118,19 +118,20 @@ jobs:
 
       - name: Build Binary
         run: cargo build --release --target ${{ matrix.target }}
-      - name: Rename artifact
+      - name: Package artifact
         shell: bash
         run: |
+          cd target/${{ matrix.target }}/release
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            mv target/${{ matrix.target }}/release/${{ matrix.artifact_name }} target/${{ matrix.target }}/release/cdd-control-plane-${{ matrix.target }}.exe
+            7z a cdd-control-plane-${{ matrix.target }}.zip ${{ matrix.artifact_name }}
           else
-            mv target/${{ matrix.target }}/release/${{ matrix.artifact_name }} target/${{ matrix.target }}/release/cdd-control-plane-${{ matrix.target }}
+            tar -czvf cdd-control-plane-${{ matrix.target }}.tar.gz ${{ matrix.artifact_name }}
           fi
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3
         with:
-          files: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          files: target/${{ matrix.target }}/release/cdd-control-plane-${{ matrix.target }}.*
           name: Release ${{ github.ref_name }}
 
   update_latest_tag:
