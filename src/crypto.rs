@@ -77,7 +77,7 @@ pub fn decrypt_local_secret(
         return Err(crate::error::Error::InternalError);
     }
 
-    let nonce = crypto_secretbox::Nonce::clone_from_slice(&combined[..24]);
+    let nonce = *crypto_secretbox::Nonce::from_slice(&combined[..24]);
     let plaintext = cipher
         .decrypt(&nonce, &combined[24..])
         .map_err(|_| crate::error::Error::InternalError)?;
@@ -102,6 +102,11 @@ mod tests {
 
         let invalid_decrypt = decrypt_local_secret(master_key, "invalid");
         assert!(invalid_decrypt.is_err());
+
+        let invalid_ciphertext = BASE64.encode(&[0u8; 32]);
+        let invalid_decrypt_cipher = decrypt_local_secret(master_key, &invalid_ciphertext);
+        assert!(invalid_decrypt_cipher.is_err());
+
         Ok(())
     }
 
@@ -119,12 +124,11 @@ mod tests {
         assert!(invalid_len.is_err());
         Ok(())
     }
-}
-
-#[test]
-fn test_local_secret_decryption_too_short() -> Result<(), Box<dyn std::error::Error>> {
-    let master_key = "my-super-secret-master-key-that-is-long-enough";
-    let invalid = decrypt_local_secret(master_key, "AAA=");
-    assert!(invalid.is_err());
-    Ok(())
+    #[test]
+    fn test_local_secret_decryption_too_short() -> Result<(), Box<dyn std::error::Error>> {
+        let master_key = "my-super-secret-master-key-that-is-long-enough";
+        let invalid = decrypt_local_secret(master_key, "AAA=");
+        assert!(invalid.is_err());
+        Ok(())
+    }
 }

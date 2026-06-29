@@ -70,11 +70,10 @@ mod tests {
         assert_eq!(config.jwt_secret, "super-secret-key");
         Ok(())
     }
-}
-
-#[test]
-fn test_app_config_load_with_file() -> Result<(), Box<dyn std::error::Error>> {
-    let config = AppConfig::load(Some("non_existent_file.toml"))?;
-    assert_eq!(config.jwt_secret, "super-secret-key");
-    Ok(())
+    #[test]
+    fn test_app_config_load_with_file() -> Result<(), Box<dyn std::error::Error>> {
+        let config = AppConfig::load(Some("non_existent_file.toml"))?;
+        assert_eq!(config.jwt_secret, "super-secret-key");
+        Ok(())
+    }
 }

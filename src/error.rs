@@ -65,51 +65,51 @@ mod tests {
         assert_eq!(Error::InternalError.to_string(), "Internal server error");
         Ok(())
     }
-}
-
-#[test]
-fn test_error_response() -> Result<(), Box<dyn std::error::Error>> {
-    assert_eq!(
-        Error::InternalError.error_response().status(),
-        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
-    );
-    assert_eq!(
-        Error::Unauthorized.error_response().status(),
-        actix_web::http::StatusCode::UNAUTHORIZED
-    );
-    assert_eq!(
-        Error::BadRequest("bad".into()).error_response().status(),
-        actix_web::http::StatusCode::BAD_REQUEST
-    );
-    assert_eq!(
-        Error::NotFound("no".into()).error_response().status(),
-        actix_web::http::StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        Error::Database(diesel::result::Error::NotFound)
-            .error_response()
-            .status(),
-        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
-    );
-    Ok(())
-}
-#[test]
-fn test_pool_error() -> Result<(), Box<dyn std::error::Error>> {
-    let manager =
-        diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
-    let pool_res = diesel::r2d2::Pool::builder()
-        .connection_timeout(std::time::Duration::from_millis(1))
-        .build(manager);
-    match pool_res {
-        Ok(_) => panic!("Expected error"),
-        Err(pool_err) => {
-            assert_eq!(
-                crate::error::Error::Pool(pool_err)
-                    .error_response()
-                    .status(),
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
-            );
-        }
+    #[test]
+    fn test_error_response() -> Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(
+            Error::InternalError.error_response().status(),
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            Error::Unauthorized.error_response().status(),
+            actix_web::http::StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            Error::BadRequest("bad".into()).error_response().status(),
+            actix_web::http::StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            Error::NotFound("no".into()).error_response().status(),
+            actix_web::http::StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            Error::Database(diesel::result::Error::NotFound)
+                .error_response()
+                .status(),
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        Ok(())
     }
-    Ok(())
+
+    #[test]
+    fn test_pool_error() -> Result<(), Box<dyn std::error::Error>> {
+        let manager =
+            diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
+        let pool_res = diesel::r2d2::Pool::builder()
+            .connection_timeout(std::time::Duration::from_millis(1))
+            .build(manager);
+        match pool_res {
+            Ok(_) => panic!("Expected error"),
+            Err(pool_err) => {
+                assert_eq!(
+                    crate::error::Error::Pool(pool_err)
+                        .error_response()
+                        .status(),
+                    actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+                );
+            }
+        }
+        Ok(())
+    }
 }
