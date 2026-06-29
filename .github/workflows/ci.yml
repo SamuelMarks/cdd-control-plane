@@ -80,13 +80,18 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+        uses: taiki-e/install-action@cargo-tarpaulin
 
       - name: Install diesel_cli and setup database
-        run: |
-          cargo install diesel_cli --no-default-features --features postgres
-          diesel setup --database-url postgres://postgres:password@localhost:5432/cdd_test
+        uses: taiki-e/install-action@v2
+        with:
+          tool: diesel_cli
+      - name: Setup Database
+        run: diesel setup --database-url postgres://postgres:password@localhost:5432/cdd_test
 
       - name: Run checks
         run: cargo check --verbose
