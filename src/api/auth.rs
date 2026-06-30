@@ -50,21 +50,18 @@ fn generate_token(
         exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
         username: username.to_string(),
     };
-    encode(
+    Ok(encode(
         &Header::default(),
         &claims,
         &EncodingKey::from_secret(jwt_secret),
-    )
-    .map_err(|_| crate::error::Error::InternalError)
+    )?)
 }
 
 /// Hash a plaintext password using Argon2.
 fn hash_password(password: &str) -> Result<String, crate::error::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|_| crate::error::Error::InternalError)?;
+    let hash = argon2.hash_password(password.as_bytes(), &salt)?;
     Ok(hash.to_string())
 }
 
@@ -107,8 +104,7 @@ pub async fn register(
             payload.email.clone(),
             hashed_pw,
         )
-        .await
-        .map_err(|_| crate::error::Error::InternalError)?;
+        .await?;
 
     let token = generate_token(user.id, &user.username, cfg.jwt_secret.as_bytes())?;
 

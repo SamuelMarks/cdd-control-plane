@@ -27,15 +27,9 @@ pub struct QueueClient {
 impl QueueClient {
     /// Initialize a new Redis queue client.
     pub async fn new(config: &AppConfig) -> Result<Self, crate::error::Error> {
-        let redis_config =
-            Config::from_url(&config.redis_url).map_err(|_| crate::error::Error::InternalError)?;
-        let client = Builder::from_config(redis_config)
-            .build()
-            .map_err(|_| crate::error::Error::InternalError)?;
-        client
-            .init()
-            .await
-            .map_err(|_| crate::error::Error::InternalError)?;
+        let redis_config = Config::from_url(&config.redis_url)?;
+        let client = Builder::from_config(redis_config).build()?;
+        client.init().await?;
         Ok(Self { client })
     }
 
@@ -44,13 +38,9 @@ impl QueueClient {
         &self,
         job: &ReleaseSdkJob,
     ) -> Result<(), crate::error::Error> {
-        let payload = serde_json::to_string(job).map_err(|_| crate::error::Error::InternalError)?;
+        let payload = serde_json::to_string(job)?;
         // We push to a Redis List acting as a queue.
-        let _: () = self
-            .client
-            .lpush("cdd_jobs:release_sdk", payload)
-            .await
-            .map_err(|_| crate::error::Error::InternalError)?;
+        let _: () = self.client.lpush("cdd_jobs:release_sdk", payload).await?;
         Ok(())
     }
 }

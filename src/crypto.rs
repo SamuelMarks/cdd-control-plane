@@ -16,9 +16,7 @@ pub fn encrypt_github_secret(
     public_key_b64: &str,
     secret_value: &str,
 ) -> Result<String, crate::error::Error> {
-    let pk_bytes = BASE64
-        .decode(public_key_b64)
-        .map_err(|_| crate::error::Error::InternalError)?;
+    let pk_bytes = BASE64.decode(public_key_b64)?;
 
     if pk_bytes.len() != 32 {
         return Err(crate::error::Error::InternalError);
@@ -28,9 +26,7 @@ pub fn encrypt_github_secret(
     pk_array.copy_from_slice(&pk_bytes);
     let public_key = PublicKey::from(pk_array);
 
-    let ciphertext = public_key
-        .seal(&mut OsRng, secret_value.as_bytes())
-        .map_err(|_| crate::error::Error::InternalError)?;
+    let ciphertext = public_key.seal(&mut OsRng, secret_value.as_bytes())?;
     Ok(BASE64.encode(ciphertext))
 }
 
@@ -48,9 +44,7 @@ pub fn encrypt_local_secret(
     let cipher = XSalsa20Poly1305::new(&key);
     let nonce = XSalsa20Poly1305::generate_nonce(&mut OsRng); // 24 bytes
 
-    let ciphertext = cipher
-        .encrypt(&nonce, plaintext.as_bytes())
-        .map_err(|_| crate::error::Error::InternalError)?;
+    let ciphertext = cipher.encrypt(&nonce, plaintext.as_bytes())?;
 
     let mut combined = nonce.to_vec();
     combined.extend(ciphertext);
@@ -70,19 +64,16 @@ pub fn decrypt_local_secret(
     let key = Key::from(key_bytes);
     let cipher = XSalsa20Poly1305::new(&key);
 
-    let combined = BASE64
-        .decode(combined_b64)
-        .map_err(|_| crate::error::Error::InternalError)?;
+    let combined = BASE64.decode(combined_b64)?;
     if combined.len() < 24 {
         return Err(crate::error::Error::InternalError);
     }
 
-    let nonce = *crypto_secretbox::Nonce::from_slice(&combined[..24]);
-    let plaintext = cipher
-        .decrypt(&nonce, &combined[24..])
-        .map_err(|_| crate::error::Error::InternalError)?;
+    let nonce_bytes: [u8; 24] = combined[..24].try_into()?;
+    let nonce = crypto_secretbox::Nonce::from(nonce_bytes);
+    let plaintext = cipher.decrypt(&nonce, &combined[24..])?;
 
-    String::from_utf8(plaintext).map_err(|_| crate::error::Error::InternalError)
+    Ok(String::from_utf8(plaintext)?)
 }
 
 #[cfg(test)]

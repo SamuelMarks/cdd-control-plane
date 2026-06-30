@@ -553,8 +553,10 @@ mod tests {
     use uuid::Uuid;
 
     fn get_test_pool() -> DbPool {
-        let database_url = std::env::var("CDD__DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:password@localhost/cdd_test".to_string());
+        let database_url = match std::env::var("DATABASE_URL") {
+            Ok(url) => url,
+            Err(_) => "postgres://postgres:password@localhost/cdd_test".to_string(),
+        };
         let manager = ConnectionManager::<diesel::PgConnection>::new(database_url);
         match Pool::builder().max_size(2).build(manager) {
             Ok(pool) => pool,

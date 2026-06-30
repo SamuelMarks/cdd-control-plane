@@ -37,27 +37,20 @@ impl AppConfig {
     /// 3. Built-in defaults
     pub fn load(config_path: Option<&str>) -> Result<Self, crate::error::Error> {
         let mut builder = config::Config::builder()
-            .set_default("database_url", "postgres://postgres:password@localhost/cdd")
-            .map_err(|_| crate::error::Error::InternalError)?
-            .set_default("server_bind", "0.0.0.0:8081")
-            .map_err(|_| crate::error::Error::InternalError)?
-            .set_default("jwt_secret", "super-secret-key")
-            .map_err(|_| crate::error::Error::InternalError)?
-            .set_default("webhook_secret", "my_webhook_secret")
-            .map_err(|_| crate::error::Error::InternalError)?
-            .set_default("redis_url", "redis://127.0.0.1:6379/")
-            .map_err(|_| crate::error::Error::InternalError)?;
+            .set_default("database_url", "postgres://postgres:password@localhost/cdd")?
+            .set_default("server_bind", "0.0.0.0:8081")?
+            .set_default("jwt_secret", "super-secret-key")?
+            .set_default("webhook_secret", "my_webhook_secret")?
+            .set_default("redis_url", "redis://127.0.0.1:6379/")?;
 
         if let Some(path) = config_path {
             builder = builder.add_source(config::File::with_name(path).required(false));
         }
 
-        builder
+        Ok(builder
             .add_source(config::Environment::with_prefix("CDD").separator("__"))
-            .build()
-            .map_err(|_| crate::error::Error::InternalError)?
-            .try_deserialize()
-            .map_err(|_| crate::error::Error::InternalError)
+            .build()?
+            .try_deserialize()?)
     }
 }
 #[cfg(test)]

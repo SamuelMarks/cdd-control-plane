@@ -15,6 +15,42 @@ pub enum Error {
     #[display("Database pool error")]
     Pool(PoolError),
 
+    /// A configuration error occurred.
+    #[display("Configuration error")]
+    Config(config::ConfigError),
+
+    /// A Redis error occurred.
+    #[display("Redis error")]
+    Redis(fred::error::Error),
+
+    /// A crypto AEAD error occurred.
+    #[display("Crypto AEAD error")]
+    CryptoAead(crypto_secretbox::aead::Error),
+
+    /// A base64 decoding error occurred.
+    #[display("Base64 decode error")]
+    Base64Decode(base64::DecodeError),
+
+    /// A UTF-8 decoding error occurred.
+    #[display("UTF-8 decode error")]
+    Utf8(std::string::FromUtf8Error),
+
+    /// An array conversion error occurred.
+    #[display("Array conversion error")]
+    TryFromSlice(std::array::TryFromSliceError),
+
+    /// A JWT encoding/decoding error.
+    #[display("JWT error")]
+    Jwt(jsonwebtoken::errors::Error),
+
+    /// A password hashing error.
+    #[display("Password hashing error")]
+    PasswordHash(argon2::password_hash::Error),
+
+    /// A JSON serialization error occurred.
+    #[display("JSON error")]
+    Json(serde_json::Error),
+
     /// A bad request error.
     #[display("Bad request: {}", _0)]
     #[from(ignore)]
@@ -39,11 +75,20 @@ impl std::error::Error for Error {}
 impl ResponseError for Error {
     fn error_response(&self) -> HttpResponse {
         match self {
-            Error::Database(_) | Error::Pool(_) | Error::InternalError => {
-                HttpResponse::InternalServerError().json(serde_json::json!({
-                    "error": "Internal server error"
-                }))
-            }
+            Error::Database(_)
+            | Error::Pool(_)
+            | Error::Config(_)
+            | Error::Redis(_)
+            | Error::CryptoAead(_)
+            | Error::Base64Decode(_)
+            | Error::Utf8(_)
+            | Error::TryFromSlice(_)
+            | Error::Jwt(_)
+            | Error::PasswordHash(_)
+            | Error::Json(_)
+            | Error::InternalError => HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": "Internal server error"
+            })),
             Error::BadRequest(msg) => HttpResponse::BadRequest().json(serde_json::json!({
                 "error": msg
             })),
