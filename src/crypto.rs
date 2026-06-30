@@ -103,7 +103,7 @@ mod tests {
         let invalid_decrypt = decrypt_local_secret(master_key, "invalid");
         assert!(invalid_decrypt.is_err());
 
-        let invalid_ciphertext = BASE64.encode(&[0u8; 32]);
+        let invalid_ciphertext = BASE64.encode([0u8; 32]);
         let invalid_decrypt_cipher = decrypt_local_secret(master_key, &invalid_ciphertext);
         assert!(invalid_decrypt_cipher.is_err());
 
