@@ -108,7 +108,11 @@ jobs:
 
       - name: Install libpq (macOS)
         if: runner.os == 'macOS'
-        run: brew install libpq
+        run: |
+          brew install libpq
+          echo "PKG_CONFIG_PATH=$(brew --prefix libpq)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PQ_LIB_DIR=$(brew --prefix libpq)/lib" >> $GITHUB_ENV
+
 
       - name: Install libpq (Windows)
         if: runner.os == 'Windows'
