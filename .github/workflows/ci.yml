@@ -119,6 +119,7 @@ jobs:
         run: |
           vcpkg install libpq:x64-windows
           echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "PQ_LIB_DIR=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib" >> $env:GITHUB_ENV
 
       - name: Build Binary
         run: cargo build --release --target ${{ matrix.target }}
