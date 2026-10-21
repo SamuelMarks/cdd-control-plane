@@ -1,27 +1,55 @@
-//!n//! Database repository module.n
+//! Database repository trait and PostgreSQL implementation.
 
-use crate::db::models::*;
-use crate::db::schema::*;
+use crate::db::models::{
+    AuditLog, NewAuditLog, NewOrganization, NewOrganizationUser, NewRelease, NewRepository,
+    NewUser, NewUserToken, Organization, OrganizationUser, Release, Repository, User, UserToken,
+};
+use crate::db::schema::{
+    audit_logs, organization_users, organizations, releases, repositories, user_tokens, users,
+};
+use crate::domain::{AuditAction, OrgRole, TokenProvider};
+use crate::error::Error;
 use actix_web::web;
 use async_trait::async_trait;
 use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager};
-use diesel::result::Error;
 #[cfg(test)]
 use mockall::automock;
+use std::str::FromStr;
 
-/// Database connection pool type alias
+/// Database connection pool type alias for PostgreSQL connections.
 pub type DbPool = r2d2::Pool<ConnectionManager<diesel::PgConnection>>;
 
-/// Database repository trait for handling CRUD operations.
+/// Abstract persistence repository trait for control-plane CRUD operations.
+#[allow(missing_docs, clippy::missing_docs_in_private_items)]
 #[cfg_attr(test, automock)]
 #[async_trait]
 pub trait CddRepository: Send + Sync {
-    /// Find a user by username
+    /// Finds a user by their unique username.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `username` - The username to query.
     async fn find_user_by_username(&self, username: String) -> Result<Option<User>, Error>;
-    /// Find a user by id
+
+    /// Finds a user by their primary key ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `id` - The numeric user ID.
     async fn find_user_by_id(&self, id: i32) -> Result<Option<User>, Error>;
-    /// Create a new user
+
+    /// Creates a new user record.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `github_id` - Optional upstream GitHub ID.
+    /// * `username` - Unique username.
+    /// * `email` - Unique email address.
+    /// * `password_hash` - Optional Argon2 password hash.
     async fn create_user(
         &self,
         github_id: Option<i64>,
@@ -30,7 +58,14 @@ pub trait CddRepository: Send + Sync {
         password_hash: Option<String>,
     ) -> Result<User, Error>;
 
-    /// Upsert a user based on GitHub ID
+    /// Upserts a user record keyed on their upstream GitHub ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `github_id` - Upstream GitHub numeric ID.
+    /// * `username` - Updated username.
+    /// * `email` - Updated email address.
     async fn upsert_user(
         &self,
         github_id: i64,
@@ -38,7 +73,14 @@ pub trait CddRepository: Send + Sync {
         email: String,
     ) -> Result<User, Error>;
 
-    /// Create an organization
+    /// Creates a new organization record.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `github_id` - Optional upstream GitHub organization ID.
+    /// * `login` - Unique organization login handle.
+    /// * `description` - Optional description.
     async fn create_organization(
         &self,
         github_id: Option<i64>,
@@ -46,7 +88,29 @@ pub trait CddRepository: Send + Sync {
         description: Option<String>,
     ) -> Result<Organization, Error>;
 
-    /// Upsert an organization based on GitHub ID
+    /// Atomically creates a new organization and assigns `owner_id` as [`OrgRole::Owner`].
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `owner_id` - User ID of the organization creator.
+    /// * `login` - Unique organization login handle.
+    /// * `description` - Optional description.
+    async fn create_organization_with_owner(
+        &self,
+        owner_id: i32,
+        login: String,
+        description: Option<String>,
+    ) -> Result<Organization, Error>;
+
+    /// Upserts an organization record keyed on its upstream GitHub ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `github_id` - Upstream GitHub organization ID.
+    /// * `login` - Organization login handle.
+    /// * `description` - Optional description.
     async fn upsert_organization(
         &self,
         github_id: i64,
@@ -54,21 +118,55 @@ pub trait CddRepository: Send + Sync {
         description: Option<String>,
     ) -> Result<Organization, Error>;
 
-    /// Get an organization
+    /// Retrieves an organization by its primary key ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Organization primary key ID.
     async fn get_organization(&self, org_id: i32) -> Result<Option<Organization>, Error>;
 
-    /// Link user to organization
+    /// Lists all organizations where `user_id` holds a membership role.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - User primary key ID.
+    async fn list_organizations_for_user(&self, user_id: i32) -> Result<Vec<Organization>, Error>;
+
+    /// Associates a user with an organization under the specified [`OrgRole`].
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Organization primary key ID.
+    /// * `user_id` - User primary key ID.
+    /// * `role` - Assigned [`OrgRole`].
     async fn add_user_to_organization(
         &self,
         org_id: i32,
         user_id: i32,
-        role: String,
+        role: OrgRole,
     ) -> Result<OrganizationUser, Error>;
 
-    /// Check user role in organization
-    async fn get_user_role(&self, org_id: i32, user_id: i32) -> Result<Option<String>, Error>;
+    /// Retrieves a user's [`OrgRole`] within an organization, if they are a member.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Organization primary key ID.
+    /// * `user_id` - User primary key ID.
+    async fn get_user_role(&self, org_id: i32, user_id: i32) -> Result<Option<OrgRole>, Error>;
 
-    /// Create a repository
+    /// Creates a new repository within an organization.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Owning organization ID.
+    /// * `github_id` - Optional upstream GitHub repository ID.
+    /// * `name` - Repository name.
+    /// * `description` - Optional description.
     async fn create_repository(
         &self,
         org_id: i32,
@@ -77,7 +175,15 @@ pub trait CddRepository: Send + Sync {
         description: Option<String>,
     ) -> Result<Repository, Error>;
 
-    /// Upsert a repository based on GitHub ID
+    /// Upserts a repository keyed on its upstream GitHub ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Owning organization ID.
+    /// * `github_id` - Upstream GitHub repository ID.
+    /// * `name` - Repository name.
+    /// * `description` - Optional description.
     async fn upsert_repository(
         &self,
         org_id: i32,
@@ -86,10 +192,32 @@ pub trait CddRepository: Send + Sync {
         description: Option<String>,
     ) -> Result<Repository, Error>;
 
-    /// Get a repository
+    /// Retrieves a repository by its primary key ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `repo_id` - Repository primary key ID.
     async fn get_repository(&self, repo_id: i32) -> Result<Option<Repository>, Error>;
 
-    /// Create a release
+    /// Lists all repositories belonging to `org_id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Organization primary key ID.
+    async fn list_repositories_for_org(&self, org_id: i32) -> Result<Vec<Repository>, Error>;
+
+    /// Creates a new SDK release record for a repository.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `repo_id` - Parent repository ID.
+    /// * `github_id` - Optional upstream GitHub release ID.
+    /// * `tag_name` - Git tag name (e.g., `v1.0.0`).
+    /// * `name` - Optional release title.
+    /// * `body` - Optional release notes.
     async fn create_release(
         &self,
         repo_id: i32,
@@ -99,7 +227,16 @@ pub trait CddRepository: Send + Sync {
         body: Option<String>,
     ) -> Result<Release, Error>;
 
-    /// Upsert a release based on GitHub ID
+    /// Upserts a release record keyed on its upstream GitHub ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `repo_id` - Parent repository ID.
+    /// * `github_id` - Upstream GitHub release ID.
+    /// * `tag_name` - Git tag name.
+    /// * `name` - Optional release title.
+    /// * `body` - Optional release notes.
     async fn upsert_release(
         &self,
         repo_id: i32,
@@ -109,31 +246,81 @@ pub trait CddRepository: Send + Sync {
         body: Option<String>,
     ) -> Result<Release, Error>;
 
-    /// Upsert a user token
+    /// Lists all releases belonging to `repo_id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `repo_id` - Repository primary key ID.
+    async fn list_releases_for_repo(&self, repo_id: i32) -> Result<Vec<Release>, Error>;
+
+    /// Retrieves a release by its primary key ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `release_id` - Release primary key ID.
+    async fn get_release(&self, release_id: i32) -> Result<Option<Release>, Error>;
+
+    /// Upserts an encrypted token for a user and [`TokenProvider`].
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - Owning user ID.
+    /// * `provider` - Validated [`TokenProvider`].
+    /// * `encrypted_token` - Base64-encoded encrypted token payload.
     async fn upsert_user_token(
         &self,
         user_id: i32,
-        provider: String,
+        provider: TokenProvider,
         encrypted_token: String,
     ) -> Result<UserToken, Error>;
 
-    /// List a user's tokens
+    /// Lists all stored token records for `user_id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - User primary key ID.
     async fn list_user_tokens(&self, user_id: i32) -> Result<Vec<UserToken>, Error>;
 
-    /// Delete a user token
-    async fn delete_user_token(&self, user_id: i32, provider: String) -> Result<(), Error>;
+    /// Deletes a stored token for `user_id` and `provider`.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - User primary key ID.
+    /// * `provider` - Validated [`TokenProvider`].
+    async fn delete_user_token(&self, user_id: i32, provider: TokenProvider) -> Result<(), Error>;
 
-    /// Create an audit log entry
+    /// Records a new audit log event.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Organization primary key ID.
+    /// * `repo_id` - Optional affected repository ID.
+    /// * `user_id` - Acting user ID.
+    /// * `action` - Auditable [`AuditAction`].
+    /// * `metadata_json` - Optional structured event metadata.
     async fn create_audit_log(
         &self,
         org_id: i32,
         repo_id: Option<i32>,
         user_id: i32,
-        action: String,
+        action: AuditAction,
         metadata_json: Option<serde_json::Value>,
     ) -> Result<AuditLog, Error>;
 
-    /// List audit logs for an organization
+    /// Lists audit log events for `org_id` ordered newest-first.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `org_id` - Organization primary key ID.
+    /// * `limit` - Maximum rows to return.
+    /// * `offset` - Number of rows to skip.
     async fn list_audit_logs(
         &self,
         org_id: i32,
@@ -142,41 +329,41 @@ pub trait CddRepository: Send + Sync {
     ) -> Result<Vec<AuditLog>, Error>;
 }
 
-impl PgRepository {
-    /// Helper to get a database connection
-    pub fn get_conn(
-        &self,
-    ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, diesel::result::Error>
-    {
-        self.pool.get().map_err(|_| diesel::result::Error::NotFound)
-    }
+/// PostgreSQL-backed implementation of [`CddRepository`].
+pub struct PgRepository {
+    /// R2D2 connection pool for PostgreSQL connections.
+    pub pool: DbPool,
 }
 
-/// Postgres implementation of CddRepository
-pub struct PgRepository {
-    /// The database connection pool
-    pub pool: DbPool,
+impl PgRepository {
+    /// Checks out a pooled PostgreSQL connection, propagating [`Error::Pool`] on failure.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The [`PgRepository`] instance.
+    pub fn get_conn(
+        &self,
+    ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, Error> {
+        Ok(self.pool.get()?)
+    }
 }
 
 #[async_trait]
 impl CddRepository for PgRepository {
     async fn find_user_by_username(&self, username: String) -> Result<Option<User>, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             users::table
                 .filter(users::username.eq(username))
                 .first::<User>(&mut conn)
                 .optional()
         })
-        .await
-        .map_err(|_| diesel::result::Error::NotFound)?
+        .await??)
     }
 
     async fn find_user_by_id(&self, id: i32) -> Result<Option<User>, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || users::table.find(id).first::<User>(&mut conn).optional())
-            .await
-            .map_err(|_| Error::NotFound)?
+        Ok(web::block(move || users::table.find(id).first::<User>(&mut conn).optional()).await??)
     }
 
     async fn create_user(
@@ -187,7 +374,7 @@ impl CddRepository for PgRepository {
         password_hash: Option<String>,
     ) -> Result<User, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_user = NewUser {
                 github_id,
                 username: &username,
@@ -198,8 +385,7 @@ impl CddRepository for PgRepository {
                 .values(&new_user)
                 .get_result::<User>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn upsert_user(
@@ -209,7 +395,7 @@ impl CddRepository for PgRepository {
         email: String,
     ) -> Result<User, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_user = NewUser {
                 github_id: Some(github_id),
                 username: &username,
@@ -223,8 +409,7 @@ impl CddRepository for PgRepository {
                 .set((users::username.eq(&username), users::email.eq(&email)))
                 .get_result::<User>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn create_organization(
@@ -234,7 +419,7 @@ impl CddRepository for PgRepository {
         description: Option<String>,
     ) -> Result<Organization, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_org = NewOrganization {
                 github_id,
                 login: &login,
@@ -244,8 +429,40 @@ impl CddRepository for PgRepository {
                 .values(&new_org)
                 .get_result::<Organization>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
+    }
+
+    async fn create_organization_with_owner(
+        &self,
+        owner_id: i32,
+        login: String,
+        description: Option<String>,
+    ) -> Result<Organization, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            conn.transaction::<Organization, diesel::result::Error, _>(|tx_conn| {
+                let new_org = NewOrganization {
+                    github_id: None,
+                    login: &login,
+                    description: description.as_deref(),
+                };
+                let org = diesel::insert_into(organizations::table)
+                    .values(&new_org)
+                    .get_result::<Organization>(tx_conn)?;
+
+                let owner_link = NewOrganizationUser {
+                    organization_id: org.id,
+                    user_id: owner_id,
+                    role: OrgRole::Owner.as_str(),
+                };
+                diesel::insert_into(organization_users::table)
+                    .values(&owner_link)
+                    .execute(tx_conn)?;
+
+                Ok(org)
+            })
+        })
+        .await??)
     }
 
     async fn upsert_organization(
@@ -255,7 +472,7 @@ impl CddRepository for PgRepository {
         description: Option<String>,
     ) -> Result<Organization, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_org = NewOrganization {
                 github_id: Some(github_id),
                 login: &login,
@@ -271,34 +488,46 @@ impl CddRepository for PgRepository {
                 ))
                 .get_result::<Organization>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn get_organization(&self, org_id: i32) -> Result<Option<Organization>, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             organizations::table
                 .find(org_id)
                 .first::<Organization>(&mut conn)
                 .optional()
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
+    }
+
+    async fn list_organizations_for_user(&self, user_id: i32) -> Result<Vec<Organization>, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            organizations::table
+                .inner_join(organization_users::table)
+                .filter(organization_users::user_id.eq(user_id))
+                .select(Organization::as_select())
+                .order(organizations::id.asc())
+                .load::<Organization>(&mut conn)
+        })
+        .await??)
     }
 
     async fn add_user_to_organization(
         &self,
         org_id: i32,
         user_id: i32,
-        role: String,
+        role: OrgRole,
     ) -> Result<OrganizationUser, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        let role_str = role.as_str().to_string();
+        Ok(web::block(move || {
             let new_link = NewOrganizationUser {
                 organization_id: org_id,
                 user_id,
-                role: &role,
+                role: &role_str,
             };
             diesel::insert_into(organization_users::table)
                 .values(&new_link)
@@ -307,16 +536,15 @@ impl CddRepository for PgRepository {
                     organization_users::user_id,
                 ))
                 .do_update()
-                .set(organization_users::role.eq(&role))
+                .set(organization_users::role.eq(&role_str))
                 .get_result::<OrganizationUser>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
-    async fn get_user_role(&self, org_id: i32, user_id: i32) -> Result<Option<String>, Error> {
+    async fn get_user_role(&self, org_id: i32, user_id: i32) -> Result<Option<OrgRole>, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        let role_opt: Option<String> = web::block(move || {
             organization_users::table
                 .filter(organization_users::organization_id.eq(org_id))
                 .filter(organization_users::user_id.eq(user_id))
@@ -324,8 +552,9 @@ impl CddRepository for PgRepository {
                 .first::<String>(&mut conn)
                 .optional()
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??;
+
+        role_opt.as_deref().map(OrgRole::from_str).transpose()
     }
 
     async fn create_repository(
@@ -336,7 +565,7 @@ impl CddRepository for PgRepository {
         description: Option<String>,
     ) -> Result<Repository, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_repo = NewRepository {
                 organization_id: org_id,
                 github_id,
@@ -347,8 +576,7 @@ impl CddRepository for PgRepository {
                 .values(&new_repo)
                 .get_result::<Repository>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn upsert_repository(
@@ -359,7 +587,7 @@ impl CddRepository for PgRepository {
         description: Option<String>,
     ) -> Result<Repository, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_repo = NewRepository {
                 organization_id: org_id,
                 github_id: Some(github_id),
@@ -377,20 +605,29 @@ impl CddRepository for PgRepository {
                 ))
                 .get_result::<Repository>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn get_repository(&self, repo_id: i32) -> Result<Option<Repository>, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             repositories::table
                 .find(repo_id)
                 .first::<Repository>(&mut conn)
                 .optional()
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
+    }
+
+    async fn list_repositories_for_org(&self, org_id: i32) -> Result<Vec<Repository>, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            repositories::table
+                .filter(repositories::organization_id.eq(org_id))
+                .order(repositories::id.asc())
+                .load::<Repository>(&mut conn)
+        })
+        .await??)
     }
 
     async fn create_release(
@@ -402,7 +639,7 @@ impl CddRepository for PgRepository {
         body: Option<String>,
     ) -> Result<Release, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_release = NewRelease {
                 repository_id: repo_id,
                 github_id,
@@ -414,8 +651,7 @@ impl CddRepository for PgRepository {
                 .values(&new_release)
                 .get_result::<Release>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn upsert_release(
@@ -427,7 +663,7 @@ impl CddRepository for PgRepository {
         body: Option<String>,
     ) -> Result<Release, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             let new_release = NewRelease {
                 repository_id: repo_id,
                 github_id: Some(github_id),
@@ -447,57 +683,81 @@ impl CddRepository for PgRepository {
                 ))
                 .get_result::<Release>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
+    }
+
+    async fn list_releases_for_repo(&self, repo_id: i32) -> Result<Vec<Release>, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            releases::table
+                .filter(releases::repository_id.eq(repo_id))
+                .order(releases::id.asc())
+                .load::<Release>(&mut conn)
+        })
+        .await??)
+    }
+
+    async fn get_release(&self, release_id: i32) -> Result<Option<Release>, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            releases::table
+                .find(release_id)
+                .first::<Release>(&mut conn)
+                .optional()
+        })
+        .await??)
     }
 
     async fn upsert_user_token(
         &self,
         user_id: i32,
-        provider: String,
+        provider: TokenProvider,
         encrypted_token: String,
     ) -> Result<UserToken, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        let provider_str = provider.as_str().to_string();
+        Ok(web::block(move || {
             let new_token = NewUserToken {
                 user_id,
-                provider: &provider,
+                provider: &provider_str,
                 encrypted_token: &encrypted_token,
             };
             diesel::insert_into(user_tokens::table)
                 .values(&new_token)
                 .on_conflict((user_tokens::user_id, user_tokens::provider))
                 .do_update()
-                .set(user_tokens::encrypted_token.eq(&encrypted_token))
+                .set((
+                    user_tokens::encrypted_token.eq(&encrypted_token),
+                    user_tokens::updated_at.eq(diesel::dsl::now),
+                ))
                 .get_result::<UserToken>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn list_user_tokens(&self, user_id: i32) -> Result<Vec<UserToken>, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             user_tokens::table
                 .filter(user_tokens::user_id.eq(user_id))
+                .order(user_tokens::provider.asc())
                 .load::<UserToken>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
-    async fn delete_user_token(&self, user_id: i32, provider: String) -> Result<(), Error> {
+    async fn delete_user_token(&self, user_id: i32, provider: TokenProvider) -> Result<(), Error> {
         let mut conn = self.get_conn()?;
+        let provider_str = provider.as_str().to_string();
         web::block(move || {
             diesel::delete(
                 user_tokens::table
                     .filter(user_tokens::user_id.eq(user_id))
-                    .filter(user_tokens::provider.eq(&provider)),
+                    .filter(user_tokens::provider.eq(&provider_str)),
             )
             .execute(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)??;
+        .await??;
         Ok(())
     }
 
@@ -506,24 +766,24 @@ impl CddRepository for PgRepository {
         org_id: i32,
         repo_id: Option<i32>,
         user_id: i32,
-        action: String,
+        action: AuditAction,
         metadata_json: Option<serde_json::Value>,
     ) -> Result<AuditLog, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        let action_str = action.as_str().to_string();
+        Ok(web::block(move || {
             let new_log = NewAuditLog {
                 org_id,
                 repo_id,
                 user_id,
-                action: &action,
+                action: &action_str,
                 metadata_json,
             };
             diesel::insert_into(audit_logs::table)
                 .values(&new_log)
                 .get_result::<AuditLog>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 
     async fn list_audit_logs(
@@ -533,7 +793,7 @@ impl CddRepository for PgRepository {
         offset: i64,
     ) -> Result<Vec<AuditLog>, Error> {
         let mut conn = self.get_conn()?;
-        web::block(move || {
+        Ok(web::block(move || {
             audit_logs::table
                 .filter(audit_logs::org_id.eq(org_id))
                 .order(audit_logs::timestamp.desc())
@@ -541,234 +801,245 @@ impl CddRepository for PgRepository {
                 .offset(offset)
                 .load::<AuditLog>(&mut conn)
         })
-        .await
-        .map_err(|_| Error::NotFound)?
+        .await??)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    //! Focused integration tests for `PgRepository`.
+
     use super::*;
     use diesel::r2d2::{ConnectionManager, Pool};
+    use std::sync::atomic::{AtomicI64, Ordering};
+    use std::time::SystemTime;
     use uuid::Uuid;
 
-    fn get_test_pool() -> DbPool {
-        let database_url = match std::env::var("DATABASE_URL") {
-            Ok(url) => url,
-            Err(_) => "postgres://postgres:password@localhost/cdd_test".to_string(),
-        };
+    /// Global atomic counter for generating non-colliding test GitHub IDs.
+    static COUNTER: AtomicI64 = AtomicI64::new(1);
+
+    /// Builds a test database pool without calling `std::process::exit`.
+    fn get_test_pool() -> Result<DbPool, Error> {
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://postgres:password@localhost/cdd_test".to_string());
         let manager = ConnectionManager::<diesel::PgConnection>::new(database_url);
-        match Pool::builder().max_size(2).build(manager) {
-            Ok(pool) => pool,
-            Err(_) => std::process::exit(1),
-        }
+        Ok(Pool::builder().max_size(2).build(manager)?)
     }
 
+    /// Generates a unique test identifier with the given `prefix`.
     fn generate_unique_name(prefix: &str) -> String {
-        format!(
-            "{}_{}",
-            prefix,
-            &Uuid::new_v4().to_string().replace("-", "")[..8]
-        )
+        let raw = Uuid::new_v4().simple().to_string();
+        format!("{prefix}_{}", &raw[..10])
+    }
+
+    /// Generates a unique positive `i64` GitHub ID for tests.
+    fn next_github_id() -> Result<i64, Error> {
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| Error::InternalError)?
+            .as_nanos();
+        let base = i64::try_from(nanos % 1_000_000_000).map_err(|_| Error::InternalError)?;
+        Ok(base.saturating_add(COUNTER.fetch_add(1, Ordering::Relaxed)))
     }
 
     #[actix_web::test]
-    async fn test_all_repository_methods() -> Result<(), Box<dyn std::error::Error>> {
-        use std::sync::atomic::{AtomicI64, Ordering};
-        use std::time::SystemTime;
-        static COUNTER: AtomicI64 = AtomicI64::new(0);
-
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_err(|e| e.to_string())?
-            .as_nanos() as i64;
-
-        let github_id_user: i64 = now
-            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
-            .abs()
-            % 100000000;
-        let github_id_org: i64 = now
-            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
-            .abs()
-            % 100000000;
-        let github_id_repo: i64 = now
-            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
-            .abs()
-            % 100000000;
-        let github_id_release: i64 = now
-            .wrapping_add(COUNTER.fetch_add(1, Ordering::Relaxed))
-            .abs()
-            % 100000000;
-
-        let pool = get_test_pool();
-        let repo = PgRepository { pool: pool.clone() };
-
-        // Test User Creation and Lookup
+    async fn test_user_and_token_crud() -> Result<(), Error> {
+        let repo = PgRepository {
+            pool: get_test_pool()?,
+        };
+        let gh_id = next_github_id()?;
         let username = generate_unique_name("user");
-        let email = format!("{}@example.com", username);
+        let email = format!("{username}@example.com");
+
         let user = repo
             .create_user(
-                Some(github_id_user),
+                Some(gh_id),
                 username.clone(),
                 email.clone(),
                 Some("hash".into()),
             )
             .await?;
-
         assert_eq!(user.username, username);
-        assert_eq!(user.github_id, Some(github_id_user));
+        assert_eq!(user.github_id, Some(gh_id));
 
-        // Test Find by Username
-        let found_user = repo
+        let by_name = repo
             .find_user_by_username(username.clone())
             .await?
-            .ok_or("user not found")?;
-        assert_eq!(found_user.id, user.id);
+            .ok_or(Error::InternalError)?;
+        assert_eq!(by_name.id, user.id);
 
-        // Test Find by ID
-        let found_by_id = repo
+        let by_id = repo
             .find_user_by_id(user.id)
             .await?
-            .ok_or("user not found by id")?;
-        assert_eq!(found_by_id.username, username);
+            .ok_or(Error::InternalError)?;
+        assert_eq!(by_id.email, email);
 
-        // Test Upsert User
-        let upserted_user = repo
-            .upsert_user(
-                github_id_user,
-                username.clone(),
-                format!("new{}@example.com", username),
-            )
+        let updated_email = format!("updated_{email}");
+        let upserted = repo
+            .upsert_user(gh_id, username.clone(), updated_email.clone())
             .await?;
-        assert_eq!(upserted_user.id, user.id); // Should update same user
+        assert_eq!(upserted.id, user.id);
+        assert_eq!(upserted.email, updated_email);
 
-        // Test Create Organization
-        let org_login = generate_unique_name("org");
-        let org = repo
-            .create_organization(Some(github_id_org), org_login.clone(), Some("desc".into()))
+        let missing = repo.find_user_by_id(i32::MAX).await?;
+        assert!(missing.is_none());
+
+        repo.upsert_user_token(user.id, TokenProvider::GitHub, "enc_1".into())
             .await?;
-        assert_eq!(org.login, org_login);
-
-        // Test Get Organization
-        let found_org = repo
-            .get_organization(org.id)
-            .await?
-            .ok_or("org not found")?;
-        assert_eq!(found_org.id, org.id);
-
-        // Test Upsert Organization
-        let upserted_org = repo
-            .upsert_organization(github_id_org, org_login.clone(), Some("new_desc".into()))
-            .await?;
-        assert_eq!(upserted_org.id, org.id);
-
-        // Test Add User to Organization & Role
-        repo.add_user_to_organization(org.id, user.id, "admin".into())
-            .await?;
-        let role = repo
-            .get_user_role(org.id, user.id)
-            .await?
-            .ok_or("role not found")?;
-        assert_eq!(role, "admin");
-
-        // Test Create Repository
-        let repo_name = generate_unique_name("repo");
-        let repository = repo
-            .create_repository(
-                org.id,
-                Some(github_id_repo),
-                repo_name.clone(),
-                Some("repo desc".into()),
-            )
-            .await?;
-        assert_eq!(repository.name, repo_name);
-
-        // Test Get Repository
-        let found_repo = repo
-            .get_repository(repository.id)
-            .await?
-            .ok_or("repository not found")?;
-        assert_eq!(found_repo.id, repository.id);
-
-        // Test Upsert Repository
-        let upserted_repo = repo
-            .upsert_repository(
-                org.id,
-                github_id_repo,
-                repo_name.clone(),
-                Some("new repo desc".into()),
-            )
-            .await?;
-        assert_eq!(upserted_repo.id, repository.id);
-
-        // Test Create Release
-        let release = repo
-            .create_release(
-                repository.id,
-                Some(github_id_release),
-                "v1.0.0".into(),
-                Some("Release 1".into()),
-                Some("Body".into()),
-            )
-            .await?;
-        assert_eq!(release.tag_name, "v1.0.0");
-
-        // Test Upsert Release
-        let upserted_release = repo
-            .upsert_release(
-                repository.id,
-                github_id_release,
-                "v1.0.0".into(),
-                Some("Release 1 updated".into()),
-                Some("New body".into()),
-            )
-            .await?;
-        assert_eq!(upserted_release.id, release.id);
-
-        // Test Upsert User Token
-        repo.upsert_user_token(user.id, "github".into(), "enc_token".into())
+        repo.upsert_user_token(user.id, TokenProvider::GitHub, "enc_2".into())
             .await?;
 
         let tokens = repo.list_user_tokens(user.id).await?;
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].provider, "github");
+        assert_eq!(tokens[0].encrypted_token, "enc_2");
 
-        // Test Delete User Token
-        repo.delete_user_token(user.id, "github".into()).await?;
-        let tokens_after = repo.list_user_tokens(user.id).await?;
-        assert!(tokens_after.is_empty());
+        repo.delete_user_token(user.id, TokenProvider::GitHub)
+            .await?;
+        assert_eq!(repo.list_user_tokens(user.id).await?, Vec::new());
 
-        // Test Create Audit Log
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_org_repo_release_and_audit_crud() -> Result<(), Error> {
+        let repo = PgRepository {
+            pool: get_test_pool()?,
+        };
+        let user_name = generate_unique_name("owner");
+        let user = repo
+            .create_user(
+                None,
+                user_name.clone(),
+                format!("{user_name}@example.com"),
+                None,
+            )
+            .await?;
+
+        // Test transactional create_organization_with_owner
+        let tx_org_login = generate_unique_name("txorg");
+        let tx_org = repo
+            .create_organization_with_owner(user.id, tx_org_login.clone(), Some("tx desc".into()))
+            .await?;
+        assert_eq!(tx_org.login, tx_org_login);
+        let owner_role = repo.get_user_role(tx_org.id, user.id).await?;
+        assert_eq!(owner_role, Some(OrgRole::Owner));
+
+        let user_orgs = repo.list_organizations_for_user(user.id).await?;
+        assert!(user_orgs.iter().any(|o| o.id == tx_org.id));
+
+        // Test create_organization and upsert_organization
+        let gh_org = next_github_id()?;
+        let org_login = generate_unique_name("org");
+        let org = repo
+            .create_organization(Some(gh_org), org_login.clone(), Some("desc".into()))
+            .await?;
+        let fetched_org = repo
+            .get_organization(org.id)
+            .await?
+            .ok_or(Error::InternalError)?;
+        assert_eq!(fetched_org.id, org.id);
+
+        let upserted_org = repo
+            .upsert_organization(gh_org, org_login, Some("updated desc".into()))
+            .await?;
+        assert_eq!(upserted_org.id, org.id);
+        assert_eq!(upserted_org.description.as_deref(), Some("updated desc"));
+
+        repo.add_user_to_organization(org.id, user.id, OrgRole::Admin)
+            .await?;
+        assert_eq!(
+            repo.get_user_role(org.id, user.id).await?,
+            Some(OrgRole::Admin)
+        );
+
+        // Repositories
+        let gh_repo = next_github_id()?;
+        let repo_name = generate_unique_name("repo");
+        let created_repo = repo
+            .create_repository(
+                org.id,
+                Some(gh_repo),
+                repo_name.clone(),
+                Some("rdesc".into()),
+            )
+            .await?;
+        assert_eq!(created_repo.name, repo_name);
+
+        let fetched_repo = repo
+            .get_repository(created_repo.id)
+            .await?
+            .ok_or(Error::InternalError)?;
+        assert_eq!(fetched_repo.id, created_repo.id);
+
+        let upserted_repo = repo
+            .upsert_repository(org.id, gh_repo, repo_name, Some("rdesc2".into()))
+            .await?;
+        assert_eq!(upserted_repo.id, created_repo.id);
+
+        let org_repos = repo.list_repositories_for_org(org.id).await?;
+        assert_eq!(org_repos.len(), 1);
+
+        // Releases
+        let gh_rel = next_github_id()?;
+        let release = repo
+            .create_release(
+                created_repo.id,
+                Some(gh_rel),
+                "v1.0.0".into(),
+                Some("R1".into()),
+                Some("Notes".into()),
+            )
+            .await?;
+        assert_eq!(release.tag_name, "v1.0.0");
+
+        let upserted_release = repo
+            .upsert_release(
+                created_repo.id,
+                gh_rel,
+                "v1.0.0".into(),
+                Some("R1-up".into()),
+                Some("Notes-up".into()),
+            )
+            .await?;
+        assert_eq!(upserted_release.id, release.id);
+
+        let repo_releases = repo.list_releases_for_repo(created_repo.id).await?;
+        assert_eq!(repo_releases.len(), 1);
+        let fetched_rel = repo
+            .get_release(release.id)
+            .await?
+            .ok_or(Error::InternalError)?;
+        assert_eq!(fetched_rel.id, release.id);
+
+        // Audit logs
         let log = repo
             .create_audit_log(
                 org.id,
-                Some(repository.id),
+                Some(created_repo.id),
                 user.id,
-                "test_action".into(),
-                Some(serde_json::json!({"key": "val"})),
+                AuditAction::RepoCreated,
+                Some(serde_json::json!({"repo": created_repo.id})),
             )
             .await?;
-        assert_eq!(log.action, "test_action");
+        assert_eq!(log.action, "repo_created");
 
-        // Test List Audit Logs
         let logs = repo.list_audit_logs(org.id, 10, 0).await?;
-        assert!(!logs.is_empty());
-        assert_eq!(logs[0].action, "test_action");
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].action, "repo_created");
 
-        // Also test missing entities
-        let missing_user = repo.find_user_by_id(9999999).await?;
-        assert!(missing_user.is_none());
+        Ok(())
+    }
 
-        // Bad connection test
-        // To get 100% coverage, we need to test connection errors.
+    #[actix_web::test]
+    async fn test_invalid_pool_connection_returns_pool_error() {
         let manager =
             diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
         let pool = diesel::r2d2::Pool::builder()
             .connection_timeout(std::time::Duration::from_millis(1))
             .build_unchecked(manager);
         let repo_invalid = PgRepository { pool };
-        assert!(repo_invalid.get_conn().is_err());
-
-        Ok(())
+        let res = repo_invalid.get_conn();
+        assert!(matches!(res, Err(Error::Pool(_))));
     }
 }

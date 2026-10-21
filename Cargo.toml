@@ -4,36 +4,47 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-actix-web = "4"
-diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "uuid", "serde_json"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1.10", features = ["v4", "serde"] }
-derive_more = { version = "1.0", features = ["display", "from"] }
-dotenvy = "0.15"
-tokio = { version = "1", features = ["rt", "macros", "net", "time"] }
-argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
-jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
-log = "0.4"
-env_logger = "0.11"
-diesel_migrations = { version = "2.3.2", features = ["postgres"] }
-utoipa = { version = "5.5", features = ["actix_extras", "chrono", "macros", "uuid"] }
-async-trait = "0.1.89"
+actix-web = { version = "4.17", default-features = false, features = ["macros"] }
+actix-web-httpauth = { version = "0.8", default-features = false }
+argon2 = { version = "0.6", default-features = false, features = ["alloc", "getrandom", "password-hash"] }
+async-trait = { version = "0.1", default-features = false }
+base64 = { version = "0.23", default-features = false, features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "now", "serde"] }
 config = { version = "0.15", default-features = false, features = ["toml"] }
-actix-web-httpauth = "0.8.2"
-futures-util = "0.3.32"
-crypto_box = { version = "0.9.1", features = ["seal"] }
-base64 = "0.22.1"
-crypto_secretbox = "0.1.1"
-fred = "10.1.0"
+crypto_box = { version = "0.9", default-features = false, features = ["getrandom", "salsa20", "seal", "std"] }
+crypto_secretbox = { version = "0.1", default-features = false, features = ["getrandom", "salsa20", "std"] }
+derive_more = { version = "2.1", default-features = false, features = ["std", "display", "from"] }
+diesel = { version = "2.3", default-features = false, features = ["postgres", "r2d2", "chrono", "serde_json"] }
+env_logger = { version = "0.11", default-features = false }
+fred = { version = "10.1", default-features = false, features = ["i-lists"] }
+jsonwebtoken = { version = "11.1", default-features = false, features = ["rust_crypto"] }
+log = { version = "0.4", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+utoipa = { version = "6.0", default-features = false, features = ["macros", "actix_extras", "chrono"] }
 
 [dev-dependencies]
-mockall = "0.14.0"
-tokio = { version = "1", features = ["test-util"] }
+mockall = { version = "0.15", default-features = false }
+uuid = { version = "1.28", default-features = false, features = ["std", "v4"] }
 
 [lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ["cfg(tarpaulin_include)"] }
+missing_docs = "deny"
+unexpected_cfgs = { level = "allow", check-cfg = ["cfg(tarpaulin_include)", "cfg(coverage)"] }
+
+[lints.rustdoc]
+all = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+missing_docs_in_private_items = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+needless_for_each = "allow"
+double_must_use = "allow"
 
 [profile.dev.package."*"]
 opt-level = 0
@@ -41,4 +52,3 @@ debug = 0
 
 [profile.dev]
 debug = 1
-

@@ -1,30 +1,30 @@
-//!n//! Middleware for authentication.n
+//! JWT authentication middleware and Actix request extractor.
 
 use crate::config::AppConfig;
-use actix_web::{dev::Payload, FromRequest, HttpRequest};
+use crate::error::Error;
+use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
-use futures_util::future::{ready, Ready};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use std::future::{ready, Ready};
+use utoipa::ToSchema;
 
-/// Claims stored inside a JWT issued by this service.
-#[derive(Debug, Serialize, Deserialize)]
+/// Claims stored inside a signed JWT issued by `cdd-control-plane`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Claims {
-    /// Subject — the numeric user ID.
+    /// Subject — the numeric database user ID.
     pub sub: i32,
-    /// Expiration time (Unix timestamp).
+    /// Expiration time (Unix timestamp in seconds).
     pub exp: usize,
-    /// The authenticated user's username.
+    /// The authenticated user's login username.
     pub username: String,
 }
 
-/// Actix-web extractor that validates a Bearer JWT and yields the caller's identity.
-///
-/// The JWT secret is read from [`AppConfig`] registered as Actix app data.  When
-/// no `AppConfig` is present (e.g. in unit tests that do not register it) the
-/// extractor falls back to the compile-time default `"super-secret-key"`.
+/// Actix-web extractor that validates a Bearer JWT against [`AppConfig::jwt_secret`]
+/// and yields the caller's verified identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthenticatedUser {
-    /// The authenticated user's database ID.
+    /// The authenticated user's database primary key ID.
     pub user_id: i32,
     /// The authenticated user's username.
     pub username: String,
@@ -34,107 +34,133 @@ impl FromRequest for AuthenticatedUser {
     type Error = actix_web::Error;
     type Future = Ready<Result<Self, Self::Error>>;
 
+    /// Extracts and validates the `Authorization: Bearer <token>` header from the incoming HTTP request.
+    ///
+    /// # Arguments
+    ///
+    /// * `req` - The incoming [`HttpRequest`].
+    /// * `payload` - The request body stream [`Payload`].
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
-        // Read the JWT secret from AppConfig stored in app data, falling back to
-        // the compile-time default so that tests without AppConfig still work.
-        let secret: Vec<u8> = match req.app_data::<actix_web::web::Data<AppConfig>>() {
-            Some(cfg) => cfg.jwt_secret.as_bytes().to_vec(),
-            None => b"super-secret-key".to_vec(),
+        let Some(cfg) = req.app_data::<web::Data<AppConfig>>() else {
+            return ready(Err(Error::InternalError.into()));
         };
 
-        let auth = BearerAuth::from_request(req, payload).into_inner();
+        let secret = cfg.jwt_secret.as_bytes();
+        let Ok(bearer) = BearerAuth::from_request(req, payload).into_inner() else {
+            return ready(Err(Error::Unauthorized.into()));
+        };
 
-        match auth {
-            Ok(bearer) => {
-                let token = bearer.token();
-                match decode::<Claims>(
-                    token,
-                    &DecodingKey::from_secret(&secret),
-                    &Validation::default(),
-                ) {
-                    Ok(token_data) => ready(Ok(AuthenticatedUser {
-                        user_id: token_data.claims.sub,
-                        username: token_data.claims.username,
-                    })),
-                    Err(_) => ready(Err(actix_web::error::ErrorUnauthorized("Invalid token"))),
-                }
-            }
-            Err(e) => ready(Err(e.into())),
+        match decode::<Claims>(
+            bearer.token(),
+            &DecodingKey::from_secret(secret),
+            &Validation::default(),
+        ) {
+            Ok(token_data) => ready(Ok(AuthenticatedUser {
+                user_id: token_data.claims.sub,
+                username: token_data.claims.username,
+            })),
+            Err(_) => ready(Err(Error::Unauthorized.into())),
         }
     }
 }
 
 #[cfg(test)]
-/// Generate a test JWT token signed with the default secret key.
-///
-/// Used by test helpers across the codebase to produce a valid Bearer token
-/// without needing a running server.
-pub fn generate_test_token() -> Result<String, Box<dyn std::error::Error>> {
+/// Constructs a default [`web::Data<AppConfig>`] instance for API unit tests.
+pub fn test_app_config() -> Result<web::Data<AppConfig>, Error> {
+    Ok(web::Data::new(AppConfig::load(None)?))
+}
+
+#[cfg(test)]
+/// Generates a test JWT token signed with the default [`AppConfig`] secret key.
+pub fn generate_test_token() -> Result<String, Error> {
     use jsonwebtoken::{encode, EncodingKey, Header};
+    let cfg = AppConfig::load(None)?;
+    let exp = usize::try_from((chrono::Utc::now() + chrono::Duration::hours(1)).timestamp())
+        .map_err(|_| Error::InternalError)?;
     let claims = Claims {
         sub: 1,
-        exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
+        exp,
         username: "testuser".to_string(),
     };
     Ok(encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(b"super-secret-key"),
+        &EncodingKey::from_secret(cfg.jwt_secret.as_bytes()),
     )?)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use actix_web::{test, web, App, HttpResponse, Responder};
+    //! Unit tests for the `AuthenticatedUser` request extractor.
 
+    use super::*;
+    use actix_web::{body::to_bytes, http::StatusCode, test, App, HttpResponse, Responder};
+
+    /// Test handler that echoes the authenticated user's ID and username.
     async fn dummy_handler(user: AuthenticatedUser) -> impl Responder {
-        HttpResponse::Ok().body(user.username)
+        HttpResponse::Ok().json(serde_json::json!({
+            "user_id": user.user_id,
+            "username": user.username,
+        }))
     }
 
     #[actix_web::test]
-    async fn test_auth_middleware_valid_token_no_config() -> Result<(), Box<dyn std::error::Error>>
-    {
+    async fn test_auth_middleware_missing_config_returns_internal_error() -> Result<(), Error> {
         let app = test::init_service(App::new().route("/", web::get().to(dummy_handler))).await;
 
         let token = generate_test_token()?;
         let req = test::TestRequest::get()
             .uri("/")
-            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .insert_header(("Authorization", format!("Bearer {token}")))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
         Ok(())
     }
 
     #[actix_web::test]
-    async fn test_auth_middleware_invalid_token() -> Result<(), Box<dyn std::error::Error>> {
-        let app = test::init_service(App::new().route("/", web::get().to(dummy_handler))).await;
+    async fn test_auth_middleware_invalid_token() -> Result<(), Error> {
+        let app = test::init_service(
+            App::new()
+                .app_data(test_app_config()?)
+                .route("/", web::get().to(dummy_handler)),
+        )
+        .await;
 
         let req = test::TestRequest::get()
             .uri("/")
             .insert_header(("Authorization", "Bearer invalid.token.value"))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = to_bytes(resp.into_body())
+            .await
+            .map_err(|_| Error::InternalError)?;
+        let json: serde_json::Value = serde_json::from_slice(&body)?;
+        assert_eq!(json["error"], "Unauthorized");
         Ok(())
     }
 
     #[actix_web::test]
-    async fn test_auth_middleware_no_token() -> Result<(), Box<dyn std::error::Error>> {
-        let app = test::init_service(App::new().route("/", web::get().to(dummy_handler))).await;
+    async fn test_auth_middleware_no_token() -> Result<(), Error> {
+        let app = test::init_service(
+            App::new()
+                .app_data(test_app_config()?)
+                .route("/", web::get().to(dummy_handler)),
+        )
+        .await;
 
         let req = test::TestRequest::get().uri("/").to_request();
         let resp = test::call_service(&app, req).await;
-        assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
         Ok(())
     }
 
     #[actix_web::test]
-    async fn test_auth_middleware_with_config() -> Result<(), Box<dyn std::error::Error>> {
+    async fn test_auth_middleware_with_config_validates_claims() -> Result<(), Error> {
         let app = test::init_service(
             App::new()
-                .app_data(web::Data::new(AppConfig::load(None)?))
+                .app_data(test_app_config()?)
                 .route("/", web::get().to(dummy_handler)),
         )
         .await;
@@ -142,10 +168,16 @@ mod tests {
         let token = generate_test_token()?;
         let req = test::TestRequest::get()
             .uri("/")
-            .insert_header(("Authorization", format!("Bearer {}", token)))
+            .insert_header(("Authorization", format!("Bearer {token}")))
             .to_request();
         let resp = test::call_service(&app, req).await;
-        assert!(resp.status().is_success());
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = to_bytes(resp.into_body())
+            .await
+            .map_err(|_| Error::InternalError)?;
+        let json: serde_json::Value = serde_json::from_slice(&body)?;
+        assert_eq!(json["user_id"], 1);
+        assert_eq!(json["username"], "testuser");
         Ok(())
     }
 }

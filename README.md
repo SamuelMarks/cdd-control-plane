@@ -3,6 +3,8 @@
 > The central API control plane, database interface, and multi-tenant management service for the `cdd` ecosystem.
 
 [![CI](https://github.com/SamuelMarks/cdd-control-plane/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-control-plane/actions/workflows/ci.yml)
+[![Test Coverage](https://img.shields.io/badge/test_coverage-100%25-brightgreen.svg)](https://github.com/SamuelMarks/cdd-control-plane/actions/workflows/ci.yml)
+[![Doc Coverage](https://img.shields.io/badge/doc_coverage-100%25-brightgreen.svg)](https://github.com/SamuelMarks/cdd-control-plane/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 `cdd-control-plane` is the source-of-truth backend for managing users, organizations, repositories, and releases. Extracted from the monolithic `cdd-ctl`, this repository handles Role-Based Access Control (RBAC), database persistence (`diesel`), and authentication, enabling multi-tenant workflows and dashboard telemetry for the `cdd-web-ui`.

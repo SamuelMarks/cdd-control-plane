@@ -1,3 +1,6 @@
+//! Auto-generated Diesel database schema definitions.
+#![allow(missing_docs, clippy::missing_docs_in_private_items)]
+
 // @generated automatically by Diesel CLI.
 
 diesel::table! {

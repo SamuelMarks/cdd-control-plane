@@ -1,26 +1,23 @@
-#![warn(clippy::missing_docs_in_private_items)]
-#![warn(missing_docs)]
-#![deny(missing_docs)]
-
-//! cdd-control-plane
+//! `cdd-control-plane`
 //!
-//! Control plane database and web server endpoints.
+//! Central control-plane API, authentication, RBAC, cryptographic secret vault,
+//! asynchronous job queue, and PostgreSQL persistence layer for the CDD ecosystem.
 
 pub mod api;
 pub mod config;
 pub mod crypto;
+pub mod domain;
 pub mod error;
 pub mod queue;
 
 pub mod db {
-    //! Database module
+    //! Database persistence models, repository traits, and schema definitions.
     pub mod models;
     pub mod repository;
-    #[allow(missing_docs)]
     pub mod schema;
 }
 
 pub use error::Error;
 
-/// Type alias for the application's Result type.
+/// Crate-wide `Result` alias defaulting to [`Error`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;

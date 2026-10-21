@@ -1,382 +1,299 @@
-//! Database models.
+//! Database persistence and insertion models for `cdd-control-plane`.
 
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::db::schema::*;
+use crate::db::schema::{
+    audit_logs, organization_users, organizations, releases, repositories, user_tokens, users,
+};
 
-/// User model representing an authenticated user or synced GitHub user.
+/// Persistent user record representing an authenticated account or synced GitHub identity.
 #[derive(
     Debug,
     Clone,
     Queryable,
     Selectable,
-    Insertable,
     Identifiable,
     Serialize,
     Deserialize,
     ToSchema,
     PartialEq,
+    Eq,
 )]
 #[diesel(table_name = users)]
-/// User model.
 pub struct User {
-    /// Field id
+    /// Unique internal primary key for the user.
     pub id: i32,
-    /// Field github_id
+    /// Optional upstream GitHub numeric user ID.
     pub github_id: Option<i64>,
-    /// Field username
+    /// Unique login handle of the user.
     pub username: String,
-    /// Field email
+    /// Unique email address of the user.
     pub email: String,
+    /// Optional Argon2 PHC password hash string (omitted when serialized to JSON).
     #[serde(skip_serializing)]
-    /// Field password_hash
     pub password_hash: Option<String>,
 }
 
-/// NewUser model.
+/// Insertion payload for creating a new [`User`] row.
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = users)]
-/// NewUser model.
 pub struct NewUser<'a> {
-    /// Field github_id
+    /// Optional upstream GitHub numeric user ID.
     pub github_id: Option<i64>,
-    /// Field username
+    /// Unique login handle of the user.
     pub username: &'a str,
-    /// Field email
+    /// Unique email address of the user.
     pub email: &'a str,
-    /// Field password_hash
+    /// Optional Argon2 PHC password hash string.
     pub password_hash: Option<&'a str>,
 }
 
-/// UpdateUser model.
-#[derive(Debug, Clone, AsChangeset)]
-#[diesel(table_name = users)]
-/// UpdateUser model.
-pub struct UpdateUser<'a> {
-    /// Field github_id
-    pub github_id: Option<i64>,
-    /// Field username
-    pub username: Option<&'a str>,
-    /// Field email
-    pub email: Option<&'a str>,
-    /// Field password_hash
-    pub password_hash: Option<&'a str>,
-}
-
+/// Persistent organization record representing a multi-tenant workspace.
 #[derive(
     Debug,
     Clone,
     Queryable,
     Selectable,
-    Insertable,
     Identifiable,
     Serialize,
     Deserialize,
     ToSchema,
     PartialEq,
+    Eq,
 )]
 #[diesel(table_name = organizations)]
-/// Organization model.
 pub struct Organization {
-    /// Field id
+    /// Unique internal primary key for the organization.
     pub id: i32,
-    /// Field github_id
+    /// Optional upstream GitHub numeric organization ID.
     pub github_id: Option<i64>,
-    /// Field login
+    /// Unique organization slug / login name.
     pub login: String,
-    /// Field description
+    /// Optional human-readable description of the organization.
     pub description: Option<String>,
 }
 
-/// NewOrganization model.
+/// Insertion payload for creating a new [`Organization`] row.
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = organizations)]
-/// NewOrganization model.
 pub struct NewOrganization<'a> {
-    /// Field github_id
+    /// Optional upstream GitHub numeric organization ID.
     pub github_id: Option<i64>,
-    /// Field login
+    /// Unique organization slug / login name.
     pub login: &'a str,
-    /// Field description
+    /// Optional human-readable description of the organization.
     pub description: Option<&'a str>,
 }
 
-/// UpdateOrganization model.
-#[derive(Debug, Clone, AsChangeset)]
-#[diesel(table_name = organizations)]
-/// UpdateOrganization model.
-pub struct UpdateOrganization<'a> {
-    /// Field github_id
-    pub github_id: Option<i64>,
-    /// Field login
-    pub login: Option<&'a str>,
-    /// Field description
-    pub description: Option<Option<&'a str>>,
-}
-
+/// Persistent join record associating a [`User`] with an [`Organization`] and an [`crate::domain::OrgRole`].
 #[derive(
     Debug,
     Clone,
     Queryable,
     Selectable,
-    Insertable,
     Identifiable,
     Serialize,
     Deserialize,
     ToSchema,
     PartialEq,
+    Eq,
 )]
 #[diesel(table_name = organization_users)]
 #[diesel(primary_key(organization_id, user_id))]
-/// OrganizationUser model.
 pub struct OrganizationUser {
-    /// Field organization_id
+    /// Foreign key referencing the [`Organization`] primary key.
     pub organization_id: i32,
-    /// Field user_id
+    /// Foreign key referencing the [`User`] primary key.
     pub user_id: i32,
-    /// Field role
+    /// Canonical lowercase role string (`owner`, `admin`, or `member`).
     pub role: String,
 }
 
-/// NewOrganizationUser model.
+/// Insertion payload for linking a [`User`] to an [`Organization`].
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = organization_users)]
-/// NewOrganizationUser model.
 pub struct NewOrganizationUser<'a> {
-    /// Field organization_id
+    /// Foreign key referencing the [`Organization`] primary key.
     pub organization_id: i32,
-    /// Field user_id
+    /// Foreign key referencing the [`User`] primary key.
     pub user_id: i32,
-    /// Field role
+    /// Canonical lowercase role string (`owner`, `admin`, or `member`).
     pub role: &'a str,
 }
 
-/// UpdateOrganizationUser model.
-#[derive(Debug, Clone, AsChangeset)]
-#[diesel(table_name = organization_users)]
-/// UpdateOrganizationUser model.
-pub struct UpdateOrganizationUser<'a> {
-    /// Field role
-    pub role: Option<&'a str>,
-}
-
+/// Persistent repository record belonging to an [`Organization`].
 #[derive(
     Debug,
     Clone,
     Queryable,
     Selectable,
-    Insertable,
     Identifiable,
     Serialize,
     Deserialize,
     ToSchema,
     PartialEq,
+    Eq,
 )]
 #[diesel(table_name = repositories)]
-/// Repository model.
 pub struct Repository {
-    /// Field id
+    /// Unique internal primary key for the repository.
     pub id: i32,
-    /// Field organization_id
+    /// Foreign key referencing the owning [`Organization`].
     pub organization_id: i32,
-    /// Field github_id
+    /// Optional upstream GitHub numeric repository ID.
     pub github_id: Option<i64>,
-    /// Field name
+    /// Name of the repository within the organization.
     pub name: String,
-    /// Field description
+    /// Optional human-readable description of the repository.
     pub description: Option<String>,
 }
 
-/// NewRepository model.
+/// Insertion payload for creating a new [`Repository`] row.
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = repositories)]
-/// NewRepository model.
 pub struct NewRepository<'a> {
-    /// Field organization_id
+    /// Foreign key referencing the owning [`Organization`].
     pub organization_id: i32,
-    /// Field github_id
+    /// Optional upstream GitHub numeric repository ID.
     pub github_id: Option<i64>,
-    /// Field name
+    /// Name of the repository within the organization.
     pub name: &'a str,
-    /// Field description
+    /// Optional human-readable description of the repository.
     pub description: Option<&'a str>,
 }
 
-/// UpdateRepository model.
-#[derive(Debug, Clone, AsChangeset)]
-#[diesel(table_name = repositories)]
-/// UpdateRepository model.
-pub struct UpdateRepository<'a> {
-    /// Field organization_id
-    pub organization_id: Option<i32>,
-    /// Field github_id
-    pub github_id: Option<i64>,
-    /// Field name
-    pub name: Option<&'a str>,
-    /// Field description
-    pub description: Option<Option<&'a str>>,
-}
-
+/// Persistent SDK release record belonging to a [`Repository`].
 #[derive(
     Debug,
     Clone,
     Queryable,
     Selectable,
-    Insertable,
     Identifiable,
     Serialize,
     Deserialize,
     ToSchema,
     PartialEq,
+    Eq,
 )]
 #[diesel(table_name = releases)]
-/// Release model.
 pub struct Release {
-    /// Field id
+    /// Unique internal primary key for the release.
     pub id: i32,
-    /// Field repository_id
+    /// Foreign key referencing the parent [`Repository`].
     pub repository_id: i32,
-    /// Field github_id
+    /// Optional upstream GitHub numeric release ID.
     pub github_id: Option<i64>,
-    /// Field tag_name
+    /// Git tag name associated with the release (e.g., `v1.0.0`).
     pub tag_name: String,
-    /// Field name
+    /// Optional release title.
     pub name: Option<String>,
-    /// Field body
+    /// Optional release notes / changelog markdown body.
     pub body: Option<String>,
 }
 
-/// NewRelease model.
+/// Insertion payload for creating a new [`Release`] row.
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = releases)]
-/// NewRelease model.
 pub struct NewRelease<'a> {
-    /// Field repository_id
+    /// Foreign key referencing the parent [`Repository`].
     pub repository_id: i32,
-    /// Field github_id
+    /// Optional upstream GitHub numeric release ID.
     pub github_id: Option<i64>,
-    /// Field tag_name
+    /// Git tag name associated with the release.
     pub tag_name: &'a str,
-    /// Field name
+    /// Optional release title.
     pub name: Option<&'a str>,
-    /// Field body
+    /// Optional release notes / changelog markdown body.
     pub body: Option<&'a str>,
 }
 
-/// UpdateRelease model.
-#[derive(Debug, Clone, AsChangeset)]
-#[diesel(table_name = releases)]
-/// UpdateRelease model.
-pub struct UpdateRelease<'a> {
-    /// Field repository_id
-    pub repository_id: Option<i32>,
-    /// Field github_id
-    pub github_id: Option<i64>,
-    /// Field tag_name
-    pub tag_name: Option<&'a str>,
-    /// Field name
-    pub name: Option<Option<&'a str>>,
-    /// Field body
-    pub body: Option<Option<&'a str>>,
-}
-
+/// Persistent encrypted credential record stored on behalf of a [`User`].
 #[derive(
     Debug,
     Clone,
     Queryable,
     Selectable,
-    Insertable,
     Identifiable,
     Serialize,
     Deserialize,
     ToSchema,
     PartialEq,
+    Eq,
 )]
 #[diesel(table_name = user_tokens)]
-/// UserToken model.
 pub struct UserToken {
-    /// Field id
+    /// Unique internal primary key for the stored token.
     pub id: i32,
-    /// Field user_id
+    /// Foreign key referencing the owning [`User`].
     pub user_id: i32,
-    /// Field provider
+    /// Canonical lowercase provider identifier (`github`, `npm`, `pypi`, `cargo`).
     pub provider: String,
-    /// Field encrypted_token
+    /// Base64-encoded `XSalsa20Poly1305` nonce and ciphertext (omitted when serialized).
+    #[serde(skip_serializing)]
     pub encrypted_token: String,
-    /// Field created_at
+    /// UTC timestamp when the token was initially created.
     pub created_at: chrono::NaiveDateTime,
-    /// Field updated_at
+    /// UTC timestamp when the token was last rotated or updated.
     pub updated_at: chrono::NaiveDateTime,
 }
 
-/// NewUserToken model.
+/// Insertion payload for storing or upserting a [`UserToken`] row.
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = user_tokens)]
-/// NewUserToken model.
 pub struct NewUserToken<'a> {
-    /// Field user_id
+    /// Foreign key referencing the owning [`User`].
     pub user_id: i32,
-    /// Field provider
+    /// Canonical lowercase provider identifier.
     pub provider: &'a str,
-    /// Field encrypted_token
+    /// Base64-encoded `XSalsa20Poly1305` nonce and ciphertext.
     pub encrypted_token: &'a str,
 }
 
-/// UpdateUserToken model.
-#[derive(Debug, Clone, AsChangeset)]
-#[diesel(table_name = user_tokens)]
-/// UpdateUserToken model.
-pub struct UpdateUserToken<'a> {
-    /// Field encrypted_token
-    pub encrypted_token: Option<&'a str>,
-}
-
+/// Persistent audit trail event recorded for security-sensitive actions within an [`Organization`].
 #[derive(
     Debug,
     Clone,
     Queryable,
     Selectable,
-    Insertable,
     Identifiable,
     Serialize,
     Deserialize,
     ToSchema,
     PartialEq,
+    Eq,
 )]
 #[diesel(table_name = audit_logs)]
-/// AuditLog model.
 pub struct AuditLog {
-    /// Field id
+    /// Unique internal primary key for the audit event.
     pub id: i32,
-    /// Field org_id
+    /// Foreign key referencing the [`Organization`] where the event occurred.
     pub org_id: i32,
-    /// Field repo_id
+    /// Optional foreign key referencing the affected [`Repository`].
     pub repo_id: Option<i32>,
-    /// Field user_id
+    /// Foreign key referencing the acting [`User`].
     pub user_id: i32,
-    /// Field action
+    /// Canonical `snake_case` action identifier (see [`crate::domain::AuditAction`]).
     pub action: String,
-    /// Field metadata_json
+    /// Optional structured JSON metadata describing the event details.
     pub metadata_json: Option<serde_json::Value>,
-    /// Field timestamp
+    /// UTC timestamp when the audit event was recorded.
     pub timestamp: chrono::NaiveDateTime,
 }
 
-/// NewAuditLog model.
+/// Insertion payload for recording a new [`AuditLog`] row.
 #[derive(Debug, Clone, Insertable)]
 #[diesel(table_name = audit_logs)]
-/// NewAuditLog model.
 pub struct NewAuditLog<'a> {
-    /// Field org_id
+    /// Foreign key referencing the [`Organization`] where the event occurred.
     pub org_id: i32,
-    /// Field repo_id
+    /// Optional foreign key referencing the affected [`Repository`].
     pub repo_id: Option<i32>,
-    /// Field user_id
+    /// Foreign key referencing the acting [`User`].
     pub user_id: i32,
-    /// Field action
+    /// Canonical `snake_case` action identifier.
     pub action: &'a str,
-    /// Field metadata_json
+    /// Optional structured JSON metadata describing the event details.
     pub metadata_json: Option<serde_json::Value>,
 }
