@@ -19,10 +19,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         web::scope("/api/v1")
             .route("/health", web::get().to(health_check))
             .configure(auth::configure)
-            .configure(orgs::configure)
             .configure(repos::configure)
-            .configure(tokens::configure)
-            .configure(audit::configure),
+            .configure(audit::configure)
+            .configure(orgs::configure)
+            .configure(tokens::configure),
     );
 }
 
