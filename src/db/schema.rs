@@ -29,6 +29,7 @@ diesel::table! {
         github_id -> Nullable<Int8>,
         login -> Varchar,
         description -> Nullable<Text>,
+        github_org_name -> Nullable<Varchar>,
     }
 }
 
@@ -50,6 +51,15 @@ diesel::table! {
         github_id -> Nullable<Int8>,
         name -> Varchar,
         description -> Nullable<Text>,
+        github_org_name -> Varchar,
+        topology_mode -> Varchar,
+        monorepo_name -> Nullable<Varchar>,
+        polyrepo_names_json -> Jsonb,
+        target_languages_json -> Jsonb,
+        language_options_json -> Jsonb,
+        release_registries_json -> Jsonb,
+        enable_pgp_signing -> Bool,
+        docs_config_json -> Jsonb,
     }
 }
 
@@ -71,6 +81,8 @@ diesel::table! {
         username -> Varchar,
         email -> Varchar,
         password_hash -> Nullable<Varchar>,
+        google_id -> Nullable<Varchar>,
+        avatar_url -> Nullable<Varchar>,
     }
 }
 

@@ -75,18 +75,15 @@ pub fn test_app_config() -> Result<web::Data<AppConfig>, Error> {
 pub fn generate_test_token() -> Result<String, Error> {
     use jsonwebtoken::{encode, EncodingKey, Header};
     let cfg = AppConfig::load(None)?;
-    let exp = usize::try_from((chrono::Utc::now() + chrono::Duration::hours(1)).timestamp())
-        .map_err(|_| Error::InternalError)?;
+    let ts = (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp();
+    let exp = usize::try_from(ts).unwrap_or(usize::MAX);
     let claims = Claims {
         sub: 1,
         exp,
         username: "testuser".to_string(),
     };
-    Ok(encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(cfg.jwt_secret.as_bytes()),
-    )?)
+    let key = EncodingKey::from_secret(cfg.jwt_secret.as_bytes());
+    Ok(encode(&Header::default(), &claims, &key)?)
 }
 
 #[cfg(test)]

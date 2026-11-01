@@ -162,6 +162,7 @@ mod tests {
                 Ok(Organization {
                     id: 10,
                     github_id: None,
+                    github_org_name: Some(login.clone()),
                     login,
                     description,
                 })
@@ -198,6 +199,7 @@ mod tests {
                     github_id: None,
                     login: "acme_corp".into(),
                     description: Some("Acme".into()),
+                    github_org_name: Some("acme_corp".into()),
                 }])
             });
 
@@ -279,6 +281,7 @@ mod tests {
                     github_id: None,
                     login: "org_two".into(),
                     description: None,
+                    github_org_name: Some("org_two".into()),
                 }))
             });
 

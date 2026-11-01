@@ -213,23 +213,16 @@ mod tests {
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(msg, "Resource already exists");
 
-        Ok(())
-    }
-
-    #[test]
-    fn test_pool_error() {
         let manager =
             diesel::r2d2::ConnectionManager::<diesel::PgConnection>::new("postgres://invalid");
-        let pool_res = diesel::r2d2::Pool::builder()
+        let pool = diesel::r2d2::Pool::builder()
             .connection_timeout(std::time::Duration::from_millis(1))
-            .build(manager);
-        assert!(pool_res.is_err());
-        if let Err(pool_err) = pool_res {
-            let err = Error::Pool(pool_err);
-            assert_eq!(
-                err.error_response().status(),
-                StatusCode::INTERNAL_SERVER_ERROR
-            );
-        }
+            .build_unchecked(manager);
+        let pool_err = pool.get().err().ok_or(Error::InternalError)?;
+        let (status, msg) = extract_error_body(&Error::Pool(pool_err)).await?;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(msg, "Internal server error");
+
+        Ok(())
     }
 }

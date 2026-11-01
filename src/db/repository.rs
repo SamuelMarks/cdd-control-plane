@@ -2,12 +2,13 @@
 
 use crate::db::models::{
     AuditLog, NewAuditLog, NewOrganization, NewOrganizationUser, NewRelease, NewRepository,
-    NewUser, NewUserToken, Organization, OrganizationUser, Release, Repository, User, UserToken,
+    NewUser, NewUserToken, Organization, OrganizationUser, Release, Repository,
+    UpdateRepositoryConfig, User, UserToken,
 };
 use crate::db::schema::{
     audit_logs, organization_users, organizations, releases, repositories, user_tokens, users,
 };
-use crate::domain::{AuditAction, OrgRole, TokenProvider};
+use crate::domain::{AuditAction, AuthMethod, OrgRole, TokenProvider};
 use crate::error::Error;
 use actix_web::web;
 use async_trait::async_trait;
@@ -31,6 +32,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `username` - The username to query.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn find_user_by_username(&self, username: String) -> Result<Option<User>, Error>;
 
     /// Finds a user by their primary key ID.
@@ -39,7 +48,63 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `id` - The numeric user ID.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn find_user_by_id(&self, id: i32) -> Result<Option<User>, Error>;
+
+    /// Finds a user by their upstream GitHub numeric user ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `github_id` - Upstream GitHub numeric ID.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
+    async fn find_user_by_github_id(&self, github_id: i64) -> Result<Option<User>, Error>;
+
+    /// Finds a user by their upstream Google subject identifier (`sub`).
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `google_id` - Google OAuth subject identifier string.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
+    async fn find_user_by_google_id(&self, google_id: String) -> Result<Option<User>, Error>;
+
+    /// Finds a user by their unique email address.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `email` - Email address string.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
+    async fn find_user_by_email(&self, email: String) -> Result<Option<User>, Error>;
 
     /// Creates a new user record.
     ///
@@ -50,12 +115,45 @@ pub trait CddRepository: Send + Sync {
     /// * `username` - Unique username.
     /// * `email` - Unique email address.
     /// * `password_hash` - Optional Argon2 password hash.
+    ///
+    /// # Returns
+    ///
+    /// Newly created [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] on duplicate constraints or [`Error`] on database failure.
     async fn create_user(
         &self,
         github_id: Option<i64>,
         username: String,
         email: String,
         password_hash: Option<String>,
+    ) -> Result<User, Error>;
+
+    /// Creates a new user record initialized via Google OAuth.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `google_id` - Upstream Google subject identifier (`sub`).
+    /// * `username` - Unique username.
+    /// * `email` - Unique email address.
+    /// * `avatar_url` - Optional avatar URL.
+    ///
+    /// # Returns
+    ///
+    /// Newly created [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] on duplicate constraints or [`Error`] on database failure.
+    async fn create_google_user(
+        &self,
+        google_id: String,
+        username: String,
+        email: String,
+        avatar_url: Option<String>,
     ) -> Result<User, Error>;
 
     /// Upserts a user record keyed on their upstream GitHub ID.
@@ -66,11 +164,93 @@ pub trait CddRepository: Send + Sync {
     /// * `github_id` - Upstream GitHub numeric ID.
     /// * `username` - Updated username.
     /// * `email` - Updated email address.
+    ///
+    /// # Returns
+    ///
+    /// Upserted [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn upsert_user(
         &self,
         github_id: i64,
         username: String,
         email: String,
+    ) -> Result<User, Error>;
+
+    /// Links an upstream GitHub numeric user ID to an existing [`User`] account.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - Target user primary key ID.
+    /// * `github_id` - Upstream GitHub numeric ID to link.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] if `github_id` is already linked to another user.
+    async fn link_github_to_user(&self, user_id: i32, github_id: i64) -> Result<User, Error>;
+
+    /// Links an upstream Google subject identifier (`sub`) to an existing [`User`] account.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - Target user primary key ID.
+    /// * `google_id` - Upstream Google subject identifier to link.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Conflict`] if `google_id` is already linked to another user.
+    async fn link_google_to_user(&self, user_id: i32, google_id: String) -> Result<User, Error>;
+
+    /// Sets or updates the Argon2id password hash on an existing [`User`] account.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - Target user primary key ID.
+    /// * `password_hash` - Argon2 PHC hash string.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
+    async fn set_user_password(&self, user_id: i32, password_hash: String) -> Result<User, Error>;
+
+    /// Unlinks an [`AuthMethod`] (`Password`, `GitHub`, or `Google`) from a [`User`] account,
+    /// enforcing that at least one active authentication credential remains.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `user_id` - Target user primary key ID.
+    /// * `provider` - The [`AuthMethod`] credential to remove.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`User`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::BadRequest`] if the provider is not linked or if unlinking would leave
+    /// the account with zero authentication methods, or [`Error::NotFound`] if the user does not exist.
+    async fn unlink_provider_from_user(
+        &self,
+        user_id: i32,
+        provider: AuthMethod,
     ) -> Result<User, Error>;
 
     /// Creates a new organization record.
@@ -81,6 +261,14 @@ pub trait CddRepository: Send + Sync {
     /// * `github_id` - Optional upstream GitHub organization ID.
     /// * `login` - Unique organization login handle.
     /// * `description` - Optional description.
+    ///
+    /// # Returns
+    ///
+    /// Newly created [`Organization`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn create_organization(
         &self,
         github_id: Option<i64>,
@@ -96,6 +284,14 @@ pub trait CddRepository: Send + Sync {
     /// * `owner_id` - User ID of the organization creator.
     /// * `login` - Unique organization login handle.
     /// * `description` - Optional description.
+    ///
+    /// # Returns
+    ///
+    /// Newly created [`Organization`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn create_organization_with_owner(
         &self,
         owner_id: i32,
@@ -111,6 +307,14 @@ pub trait CddRepository: Send + Sync {
     /// * `github_id` - Upstream GitHub organization ID.
     /// * `login` - Organization login handle.
     /// * `description` - Optional description.
+    ///
+    /// # Returns
+    ///
+    /// Upserted [`Organization`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn upsert_organization(
         &self,
         github_id: i64,
@@ -124,6 +328,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `org_id` - Organization primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`Organization`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn get_organization(&self, org_id: i32) -> Result<Option<Organization>, Error>;
 
     /// Lists all organizations where `user_id` holds a membership role.
@@ -132,6 +344,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `user_id` - User primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Vector of [`Organization`] records.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn list_organizations_for_user(&self, user_id: i32) -> Result<Vec<Organization>, Error>;
 
     /// Associates a user with an organization under the specified [`OrgRole`].
@@ -142,6 +362,14 @@ pub trait CddRepository: Send + Sync {
     /// * `org_id` - Organization primary key ID.
     /// * `user_id` - User primary key ID.
     /// * `role` - Assigned [`OrgRole`].
+    ///
+    /// # Returns
+    ///
+    /// Upserted [`OrganizationUser`] membership record.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn add_user_to_organization(
         &self,
         org_id: i32,
@@ -156,6 +384,14 @@ pub trait CddRepository: Send + Sync {
     /// * `&self` - The repository instance.
     /// * `org_id` - Organization primary key ID.
     /// * `user_id` - User primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Optional [`OrgRole`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn get_user_role(&self, org_id: i32, user_id: i32) -> Result<Option<OrgRole>, Error>;
 
     /// Creates a new repository within an organization.
@@ -167,12 +403,41 @@ pub trait CddRepository: Send + Sync {
     /// * `github_id` - Optional upstream GitHub repository ID.
     /// * `name` - Repository name.
     /// * `description` - Optional description.
+    ///
+    /// # Returns
+    ///
+    /// Newly created [`Repository`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn create_repository(
         &self,
         org_id: i32,
         github_id: Option<i64>,
         name: String,
         description: Option<String>,
+    ) -> Result<Repository, Error>;
+
+    /// Updates a repository's topology, target languages, generator options, registries, PGP, and docs configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `&self` - The repository instance.
+    /// * `repo_id` - Target repository primary key ID.
+    /// * `update` - [`UpdateRepositoryConfig`] changeset.
+    ///
+    /// # Returns
+    ///
+    /// Updated [`Repository`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
+    async fn update_repository_config(
+        &self,
+        repo_id: i32,
+        update: UpdateRepositoryConfig,
     ) -> Result<Repository, Error>;
 
     /// Upserts a repository keyed on its upstream GitHub ID.
@@ -184,6 +449,14 @@ pub trait CddRepository: Send + Sync {
     /// * `github_id` - Upstream GitHub repository ID.
     /// * `name` - Repository name.
     /// * `description` - Optional description.
+    ///
+    /// # Returns
+    ///
+    /// Upserted [`Repository`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn upsert_repository(
         &self,
         org_id: i32,
@@ -198,6 +471,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `repo_id` - Repository primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`Repository`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn get_repository(&self, repo_id: i32) -> Result<Option<Repository>, Error>;
 
     /// Lists all repositories belonging to `org_id`.
@@ -206,6 +487,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `org_id` - Organization primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Vector of [`Repository`] records.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn list_repositories_for_org(&self, org_id: i32) -> Result<Vec<Repository>, Error>;
 
     /// Creates a new SDK release record for a repository.
@@ -218,6 +507,14 @@ pub trait CddRepository: Send + Sync {
     /// * `tag_name` - Git tag name (e.g., `v1.0.0`).
     /// * `name` - Optional release title.
     /// * `body` - Optional release notes.
+    ///
+    /// # Returns
+    ///
+    /// Newly created [`Release`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn create_release(
         &self,
         repo_id: i32,
@@ -237,6 +534,14 @@ pub trait CddRepository: Send + Sync {
     /// * `tag_name` - Git tag name.
     /// * `name` - Optional release title.
     /// * `body` - Optional release notes.
+    ///
+    /// # Returns
+    ///
+    /// Upserted [`Release`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn upsert_release(
         &self,
         repo_id: i32,
@@ -252,6 +557,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `repo_id` - Repository primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Vector of [`Release`] records.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn list_releases_for_repo(&self, repo_id: i32) -> Result<Vec<Release>, Error>;
 
     /// Retrieves a release by its primary key ID.
@@ -260,6 +573,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `release_id` - Release primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Optional matching [`Release`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn get_release(&self, release_id: i32) -> Result<Option<Release>, Error>;
 
     /// Upserts an encrypted token for a user and [`TokenProvider`].
@@ -270,6 +591,14 @@ pub trait CddRepository: Send + Sync {
     /// * `user_id` - Owning user ID.
     /// * `provider` - Validated [`TokenProvider`].
     /// * `encrypted_token` - Base64-encoded encrypted token payload.
+    ///
+    /// # Returns
+    ///
+    /// Upserted [`UserToken`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn upsert_user_token(
         &self,
         user_id: i32,
@@ -283,6 +612,14 @@ pub trait CddRepository: Send + Sync {
     ///
     /// * `&self` - The repository instance.
     /// * `user_id` - User primary key ID.
+    ///
+    /// # Returns
+    ///
+    /// Vector of [`UserToken`] records.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn list_user_tokens(&self, user_id: i32) -> Result<Vec<UserToken>, Error>;
 
     /// Deletes a stored token for `user_id` and `provider`.
@@ -292,6 +629,14 @@ pub trait CddRepository: Send + Sync {
     /// * `&self` - The repository instance.
     /// * `user_id` - User primary key ID.
     /// * `provider` - Validated [`TokenProvider`].
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn delete_user_token(&self, user_id: i32, provider: TokenProvider) -> Result<(), Error>;
 
     /// Records a new audit log event.
@@ -304,6 +649,14 @@ pub trait CddRepository: Send + Sync {
     /// * `user_id` - Acting user ID.
     /// * `action` - Auditable [`AuditAction`].
     /// * `metadata_json` - Optional structured event metadata.
+    ///
+    /// # Returns
+    ///
+    /// Newly created [`AuditLog`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn create_audit_log(
         &self,
         org_id: i32,
@@ -321,6 +674,14 @@ pub trait CddRepository: Send + Sync {
     /// * `org_id` - Organization primary key ID.
     /// * `limit` - Maximum rows to return.
     /// * `offset` - Number of rows to skip.
+    ///
+    /// # Returns
+    ///
+    /// Vector of [`AuditLog`] records.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error`] on database or pool failure.
     async fn list_audit_logs(
         &self,
         org_id: i32,
@@ -341,6 +702,14 @@ impl PgRepository {
     /// # Arguments
     ///
     /// * `&self` - The [`PgRepository`] instance.
+    ///
+    /// # Returns
+    ///
+    /// Pooled PostgreSQL connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Pool`] if connection checkout times out or fails.
     pub fn get_conn(
         &self,
     ) -> Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>, Error> {
@@ -366,6 +735,39 @@ impl CddRepository for PgRepository {
         Ok(web::block(move || users::table.find(id).first::<User>(&mut conn).optional()).await??)
     }
 
+    async fn find_user_by_github_id(&self, github_id: i64) -> Result<Option<User>, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            users::table
+                .filter(users::github_id.eq(github_id))
+                .first::<User>(&mut conn)
+                .optional()
+        })
+        .await??)
+    }
+
+    async fn find_user_by_google_id(&self, google_id: String) -> Result<Option<User>, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            users::table
+                .filter(users::google_id.eq(google_id))
+                .first::<User>(&mut conn)
+                .optional()
+        })
+        .await??)
+    }
+
+    async fn find_user_by_email(&self, email: String) -> Result<Option<User>, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            users::table
+                .filter(users::email.eq(email))
+                .first::<User>(&mut conn)
+                .optional()
+        })
+        .await??)
+    }
+
     async fn create_user(
         &self,
         github_id: Option<i64>,
@@ -380,6 +782,32 @@ impl CddRepository for PgRepository {
                 username: &username,
                 email: &email,
                 password_hash: password_hash.as_deref(),
+                google_id: None,
+                avatar_url: None,
+            };
+            diesel::insert_into(users::table)
+                .values(&new_user)
+                .get_result::<User>(&mut conn)
+        })
+        .await??)
+    }
+
+    async fn create_google_user(
+        &self,
+        google_id: String,
+        username: String,
+        email: String,
+        avatar_url: Option<String>,
+    ) -> Result<User, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            let new_user = NewUser {
+                github_id: None,
+                username: &username,
+                email: &email,
+                password_hash: None,
+                google_id: Some(&google_id),
+                avatar_url: avatar_url.as_deref(),
             };
             diesel::insert_into(users::table)
                 .values(&new_user)
@@ -401,6 +829,8 @@ impl CddRepository for PgRepository {
                 username: &username,
                 email: &email,
                 password_hash: None,
+                google_id: None,
+                avatar_url: None,
             };
             diesel::insert_into(users::table)
                 .values(&new_user)
@@ -410,6 +840,81 @@ impl CddRepository for PgRepository {
                 .get_result::<User>(&mut conn)
         })
         .await??)
+    }
+
+    async fn link_github_to_user(&self, user_id: i32, github_id: i64) -> Result<User, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            diesel::update(users::table.find(user_id))
+                .set(users::github_id.eq(Some(github_id)))
+                .get_result::<User>(&mut conn)
+        })
+        .await??)
+    }
+
+    async fn link_google_to_user(&self, user_id: i32, google_id: String) -> Result<User, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            diesel::update(users::table.find(user_id))
+                .set(users::google_id.eq(Some(google_id)))
+                .get_result::<User>(&mut conn)
+        })
+        .await??)
+    }
+
+    async fn set_user_password(&self, user_id: i32, password_hash: String) -> Result<User, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            diesel::update(users::table.find(user_id))
+                .set(users::password_hash.eq(Some(password_hash)))
+                .get_result::<User>(&mut conn)
+        })
+        .await??)
+    }
+
+    async fn unlink_provider_from_user(
+        &self,
+        user_id: i32,
+        provider: AuthMethod,
+    ) -> Result<User, Error> {
+        let mut conn = self.get_conn()?;
+        web::block(move || {
+            conn.transaction::<User, Error, _>(|tx_conn| {
+                let Some(user) = users::table
+                    .find(user_id)
+                    .first::<User>(tx_conn)
+                    .optional()?
+                else {
+                    return Err(Error::NotFound("User not found".into()));
+                };
+
+                let connected = user.connected_providers();
+                if !connected.contains(&provider) {
+                    return Err(Error::BadRequest(format!(
+                        "Authentication method '{provider}' is not linked to this account"
+                    )));
+                }
+                if connected.len() <= 1 {
+                    return Err(Error::BadRequest(
+                        "Cannot disconnect the last remaining authentication method".into(),
+                    ));
+                }
+
+                let updated = match provider {
+                    AuthMethod::Password => diesel::update(users::table.find(user_id))
+                        .set(users::password_hash.eq(None::<String>))
+                        .get_result::<User>(tx_conn)?,
+                    AuthMethod::GitHub => diesel::update(users::table.find(user_id))
+                        .set(users::github_id.eq(None::<i64>))
+                        .get_result::<User>(tx_conn)?,
+                    AuthMethod::Google => diesel::update(users::table.find(user_id))
+                        .set(users::google_id.eq(None::<String>))
+                        .get_result::<User>(tx_conn)?,
+                };
+                Ok(updated)
+            })
+        })
+        .await?
     }
 
     async fn create_organization(
@@ -424,6 +929,7 @@ impl CddRepository for PgRepository {
                 github_id,
                 login: &login,
                 description: description.as_deref(),
+                github_org_name: Some(&login),
             };
             diesel::insert_into(organizations::table)
                 .values(&new_org)
@@ -445,6 +951,7 @@ impl CddRepository for PgRepository {
                     github_id: None,
                     login: &login,
                     description: description.as_deref(),
+                    github_org_name: Some(&login),
                 };
                 let org = diesel::insert_into(organizations::table)
                     .values(&new_org)
@@ -477,6 +984,7 @@ impl CddRepository for PgRepository {
                 github_id: Some(github_id),
                 login: &login,
                 description: description.as_deref(),
+                github_org_name: Some(&login),
             };
             diesel::insert_into(organizations::table)
                 .values(&new_org)
@@ -571,9 +1079,32 @@ impl CddRepository for PgRepository {
                 github_id,
                 name: &name,
                 description: description.as_deref(),
+                github_org_name: "",
+                topology_mode: "monorepo",
+                monorepo_name: None,
+                polyrepo_names_json: serde_json::json!({}),
+                target_languages_json: serde_json::json!([]),
+                language_options_json: serde_json::json!({}),
+                release_registries_json: serde_json::json!([]),
+                enable_pgp_signing: false,
+                docs_config_json: serde_json::json!({"enabled": true, "target": "official"}),
             };
             diesel::insert_into(repositories::table)
                 .values(&new_repo)
+                .get_result::<Repository>(&mut conn)
+        })
+        .await??)
+    }
+
+    async fn update_repository_config(
+        &self,
+        repo_id: i32,
+        update: UpdateRepositoryConfig,
+    ) -> Result<Repository, Error> {
+        let mut conn = self.get_conn()?;
+        Ok(web::block(move || {
+            diesel::update(repositories::table.find(repo_id))
+                .set(&update)
                 .get_result::<Repository>(&mut conn)
         })
         .await??)
@@ -593,6 +1124,15 @@ impl CddRepository for PgRepository {
                 github_id: Some(github_id),
                 name: &name,
                 description: description.as_deref(),
+                github_org_name: "",
+                topology_mode: "monorepo",
+                monorepo_name: None,
+                polyrepo_names_json: serde_json::json!({}),
+                target_languages_json: serde_json::json!([]),
+                language_options_json: serde_json::json!({}),
+                release_registries_json: serde_json::json!([]),
+                enable_pgp_signing: false,
+                docs_config_json: serde_json::json!({"enabled": true, "target": "official"}),
             };
             diesel::insert_into(repositories::table)
                 .values(&new_repo)
@@ -820,8 +1360,8 @@ mod tests {
 
     /// Builds a test database pool without calling `std::process::exit`.
     fn get_test_pool() -> Result<DbPool, Error> {
-        let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:password@localhost/cdd_test".to_string());
+        let default_url = "postgres://postgres:password@localhost/cdd_test".to_string();
+        let database_url = std::env::var("DATABASE_URL").unwrap_or(default_url);
         let manager = ConnectionManager::<diesel::PgConnection>::new(database_url);
         Ok(Pool::builder().max_size(2).build(manager)?)
     }
@@ -874,6 +1414,18 @@ mod tests {
             .ok_or(Error::InternalError)?;
         assert_eq!(by_id.email, email);
 
+        let by_gh = repo
+            .find_user_by_github_id(gh_id)
+            .await?
+            .ok_or(Error::InternalError)?;
+        assert_eq!(by_gh.id, user.id);
+
+        let by_email = repo
+            .find_user_by_email(email.clone())
+            .await?
+            .ok_or(Error::InternalError)?;
+        assert_eq!(by_email.id, user.id);
+
         let updated_email = format!("updated_{email}");
         let upserted = repo
             .upsert_user(gh_id, username.clone(), updated_email.clone())
@@ -897,6 +1449,86 @@ mod tests {
         repo.delete_user_token(user.id, TokenProvider::GitHub)
             .await?;
         assert_eq!(repo.list_user_tokens(user.id).await?, Vec::new());
+
+        Ok(())
+    }
+
+    #[actix_web::test]
+    async fn test_google_user_and_account_linking() -> Result<(), Error> {
+        let repo = PgRepository {
+            pool: get_test_pool()?,
+        };
+        let g_sub = generate_unique_name("google_sub");
+        let uname = generate_unique_name("guser");
+        let email = format!("{uname}@example.com");
+
+        let g_user = repo
+            .create_google_user(
+                g_sub.clone(),
+                uname.clone(),
+                email.clone(),
+                Some("https://example.com/avatar.png".into()),
+            )
+            .await?;
+        assert_eq!(g_user.google_id.as_deref(), Some(g_sub.as_str()));
+        assert_eq!(
+            g_user.avatar_url.as_deref(),
+            Some("https://example.com/avatar.png")
+        );
+
+        let found_g = repo
+            .find_user_by_google_id(g_sub.clone())
+            .await?
+            .ok_or(Error::InternalError)?;
+        assert_eq!(found_g.id, g_user.id);
+
+        // Cannot unlink the only remaining auth method (Google)
+        let last_err = repo
+            .unlink_provider_from_user(g_user.id, AuthMethod::Google)
+            .await;
+        assert!(matches!(last_err, Err(Error::BadRequest(_))));
+
+        // Cannot unlink a method that is not currently linked (Password)
+        let not_linked_err = repo
+            .unlink_provider_from_user(g_user.id, AuthMethod::Password)
+            .await;
+        assert!(matches!(not_linked_err, Err(Error::BadRequest(_))));
+
+        // Unlinking for a non-existent user returns NotFound
+        let nf_err = repo
+            .unlink_provider_from_user(i32::MAX, AuthMethod::Google)
+            .await;
+        assert!(matches!(nf_err, Err(Error::NotFound(_))));
+
+        // Link GitHub and Password to the user
+        let gh_id = next_github_id()?;
+        let with_gh = repo.link_github_to_user(g_user.id, gh_id).await?;
+        assert_eq!(with_gh.github_id, Some(gh_id));
+
+        let with_pw = repo
+            .set_user_password(g_user.id, "argon2_hash".into())
+            .await?;
+        assert_eq!(with_pw.password_hash.as_deref(), Some("argon2_hash"));
+
+        // Unlink Google, GitHub, and then re-link Google so we test all 3 unlink branches
+        let after_unlink_google = repo
+            .unlink_provider_from_user(g_user.id, AuthMethod::Google)
+            .await?;
+        assert!(after_unlink_google.google_id.is_none());
+
+        let g_sub_2 = generate_unique_name("google_sub2");
+        let relinked_g = repo.link_google_to_user(g_user.id, g_sub_2.clone()).await?;
+        assert_eq!(relinked_g.google_id.as_deref(), Some(g_sub_2.as_str()));
+
+        let after_unlink_gh = repo
+            .unlink_provider_from_user(g_user.id, AuthMethod::GitHub)
+            .await?;
+        assert!(after_unlink_gh.github_id.is_none());
+
+        let after_unlink_pw = repo
+            .unlink_provider_from_user(g_user.id, AuthMethod::Password)
+            .await?;
+        assert!(after_unlink_pw.password_hash.is_none());
 
         Ok(())
     }
@@ -953,7 +1585,7 @@ mod tests {
             Some(OrgRole::Admin)
         );
 
-        // Repositories
+        // Repositories + update_repository_config
         let gh_repo = next_github_id()?;
         let repo_name = generate_unique_name("repo");
         let created_repo = repo
@@ -965,6 +1597,22 @@ mod tests {
             )
             .await?;
         assert_eq!(created_repo.name, repo_name);
+
+        let updated_cfg = repo
+            .update_repository_config(
+                created_repo.id,
+                UpdateRepositoryConfig {
+                    github_org_name: Some("AcmeOrg".into()),
+                    topology_mode: Some("polyrepo".into()),
+                    enable_pgp_signing: Some(true),
+                    target_languages_json: Some(serde_json::json!(["rust", "python"])),
+                    ..UpdateRepositoryConfig::default()
+                },
+            )
+            .await?;
+        assert_eq!(updated_cfg.github_org_name, "AcmeOrg");
+        assert_eq!(updated_cfg.topology_mode, "polyrepo");
+        assert!(updated_cfg.enable_pgp_signing);
 
         let fetched_repo = repo
             .get_repository(created_repo.id)
